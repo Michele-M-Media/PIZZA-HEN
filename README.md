@@ -4,7 +4,7 @@
 
 This project started from the GPLv3 etaHEN 2.5B source base and has been extensively reworked around a PIZZA HEN runtime, UI, service chain, Multi-SDK build policy, KStuff selector, frozen ShadowMount integration, Toolbox, Game Manager integration, cheats, plugin management, FTP, and debugging services.
 
-> **Status:** v0.1 beta / pre-release  
+> **Status:** v0.1 / pre-release  
 > Some components are experimental, especially the App Plugin Manager lifecycle introduced from observed etaHEN 2.6B behavior.
 
 ## Highlights
