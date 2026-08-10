@@ -1,0 +1,11 @@
+PIZZA HEN FIX6 SQLite archive check
+archive: Source Code/lib/libsqlite.a
+link name: -lsqlite
+required filename resolution: libsqlite.a
+verified exported symbols:
+- sqlite3_open
+- sqlite3_open_v2
+- sqlite3_prepare_v2
+- sqlite3_step
+- sqlite3_finalize
+- sqlite3_close

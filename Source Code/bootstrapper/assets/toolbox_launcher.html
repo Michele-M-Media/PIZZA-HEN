@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>PIZZA HEN Toolbox</title>
+<style>
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;font-family:Arial,Helvetica,sans-serif;background:#0b0d12;color:#f7f7f7}
+body{display:flex;align-items:center;justify-content:center;background:radial-gradient(circle at 50% 15%,#242936 0,#11141b 40%,#08090d 100%)}
+.card{width:min(760px,90vw);padding:38px;border:1px solid rgba(255,255,255,.14);border-radius:28px;background:rgba(11,13,18,.94);text-align:center;box-shadow:0 28px 90px rgba(0,0,0,.5)}
+.logoFrame{width:132px;height:132px;margin:0 auto 20px;display:flex;align-items:center;justify-content:center;border-radius:26px;background:#1d2029;border:1px solid rgba(255,255,255,.10)}
+img{width:110px;height:110px;object-fit:contain;display:block}
+h1{font-size:38px;margin:0 0 10px}.sub{font-size:18px;color:#b7becd;line-height:1.5}
+#status{margin:26px 0 18px;padding:16px;border-radius:15px;background:#10131a;border:1px solid rgba(255,255,255,.11);font-size:18px}
+button{font-size:21px;padding:16px 28px;border:0;border-radius:14px;cursor:pointer}
+.ok{color:#dfffe5}.warn{color:#ffe9ae}.err{color:#ffb3b3}
+</style>
+</head>
+<body>
+<main class="card">
+<div class="logoFrame"><img src="/fs/data/PIZZA_HEN/pizzahen.png" alt="PIZZA HEN"></div>
+<h1>PIZZA HEN Toolbox</h1>
+<div class="sub">Welcome to the PIZZA HEN kitchen. Your tools are only one click away — fast, clean and ready when you need them.</div>
+<div id="status" class="warn">Preparing the PIZZA HEN kitchen...</div>
+<button id="retry" onclick="openToolbox()">Open Toolbox</button>
+</main>
+<script>
+const statusEl=document.getElementById('status');
+const retry=document.getElementById('retry');
+let busy=false;
+function setStatus(cls,text){statusEl.className=cls;statusEl.textContent=text;}
+async function readStatus(){
+  try{
+    const r=await fetch('/fs/data/PIZZA_HEN/runtime/toolbox_action_status.txt?ts='+Date.now(),{cache:'no-store'});
+    if(!r.ok)return '';
+    return (await r.text()).trim();
+  }catch(_e){return '';}
+}
+async function openToolbox(){
+  if(busy)return;
+  busy=true;retry.disabled=true;
+  setStatus('warn','Heating up the PIZZA HEN Toolbox...');
+  try{
+    const q=new URLSearchParams({pipe:'0',daemon:'1',path:'/data/PIZZA_HEN/bin/pizzahen-toolbox-open.elf'});
+    const r=await fetch('/hbldr?'+q.toString(),{cache:'no-store'});
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    for(let i=0;i<22;i++){
+      await new Promise(resolve=>setTimeout(resolve,750));
+      const s=await readStatus();
+      if(s==='ok'){
+        setStatus('ok','Everything is ready. Opening PIZZA HEN Toolbox...');
+        busy=false;retry.disabled=false;retry.textContent='Open Toolbox Again';
+        return;
+      }
+      if(s.startsWith('fail:'))throw new Error(s.substring(5));
+    }
+    throw new Error('timeout');
+  }catch(e){
+    setStatus('err','PIZZA HEN Toolbox could not open: '+e.message+'. You can safely try again.');
+    busy=false;retry.disabled=false;
+  }
+}
+setTimeout(openToolbox,500);
+</script>
+</body>
+</html>

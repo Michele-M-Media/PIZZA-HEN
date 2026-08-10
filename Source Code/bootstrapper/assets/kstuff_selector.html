@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>PIZZA HEN - KStuff Selector</title>
+<style>
+  *{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;font-family:Arial,Helvetica,sans-serif;background:#0b0d12;color:#f7f7f7;overflow:hidden}
+  body{display:flex;align-items:center;justify-content:center;background:radial-gradient(circle at 50% 15%,#242936 0,#11141b 40%,#08090d 100%)}
+  .shell{width:min(1180px,92vw);padding:38px 44px;border:1px solid rgba(255,255,255,.14);border-radius:28px;background:rgba(11,13,18,.92);box-shadow:0 28px 90px rgba(0,0,0,.5)}
+  .top{display:flex;align-items:center;gap:22px;margin-bottom:32px}.logoFrame{width:104px;height:104px;display:flex;align-items:center;justify-content:center;flex:0 0 104px;border-radius:22px;background:#1d2029;border:1px solid rgba(255,255,255,.10);overflow:hidden}.logo{width:88px;height:88px;object-fit:contain;object-position:center;background:transparent;display:block}
+  h1{font-size:42px;margin:0 0 7px;letter-spacing:.5px}.sub{font-size:19px;color:#b7becd}.fw{margin-left:auto;font-size:16px;padding:10px 14px;border:1px solid rgba(255,255,255,.15);border-radius:999px;color:#dfe5f2}
+  .cards{display:grid;grid-template-columns:1fr 1fr;gap:24px}.card{appearance:none;text-align:left;min-height:245px;border:1px solid rgba(255,255,255,.16);border-radius:24px;background:linear-gradient(145deg,#1a1e28,#11141a);color:#fff;padding:30px;cursor:pointer;transition:.16s transform,.16s border-color,.16s background}
+  .card:focus,.card:hover{outline:none;transform:scale(1.025);border-color:#fff;background:linear-gradient(145deg,#242a37,#151922)}.card:disabled{opacity:.45;transform:none;cursor:default}
+  .mode{font-size:14px;text-transform:uppercase;letter-spacing:1.5px;color:#9da8bc;margin-bottom:14px}.name{font-size:31px;font-weight:700;margin-bottom:12px}.author{font-size:18px;color:#c7cedc}.desc{margin-top:22px;font-size:16px;line-height:1.45;color:#aeb7c8}
+  .status{margin-top:27px;min-height:54px;padding:15px 18px;border-radius:16px;background:#10131a;border:1px solid rgba(255,255,255,.11);font-size:18px;display:flex;align-items:center}.ok{color:#dfffe5}.warn{color:#ffe9ae}.err{color:#ffb3b3}
+  .foot{margin-top:18px;text-align:center;color:#778094;font-size:13px}
+</style>
+</head>
+<body>
+<main class="shell">
+  <div class="top">
+    <div class="logoFrame"><img class="logo" src="/fs/data/PIZZA_HEN/pizzahen.png" alt="PIZZA HEN"></div>
+    <div><h1>PIZZA HEN</h1><div class="sub">Choose the KStuff engine for this session</div></div>
+    <div class="fw">KStuff Engine Selector</div>
+  </div>
+  <section class="cards">
+    <button id="lite" class="card" onclick="chooseEngine('lite')">
+      <div class="mode">Modern Mode</div><div class="name">KStuff Lite 1.09</div><div class="author">EchoStretch</div>
+      <div class="desc">Modern Lite baseline used by PIZZA HEN. Select this for the standard session.</div>
+    </button>
+    <button id="dr" class="card" onclick="chooseEngine('dr')">
+      <div class="mode">Compatibility Mode</div><div class="name">KStuff DR 1.2</div><div class="author">Drakmor</div>
+      <div class="desc">Compatibility engine for firmware/title combinations that behave differently with Lite.</div>
+    </button>
+  </section>
+  <div id="status" class="status">Waiting for your selection. PIZZA HEN will start only one KStuff engine.</div>
+  <div class="foot">PIZZA HEN • one engine per session • ShadowMountPlus starts after KStuff is ready</div>
+</main>
+<script>
+const statusEl=document.getElementById('status');
+const liteBtn=document.getElementById('lite');
+const drBtn=document.getElementById('dr');
+let submitted=false;
+function setButtons(disabled){liteBtn.disabled=disabled;drBtn.disabled=disabled;}
+function engineName(v){return v==='dr'?'KStuff DR 1.2':'KStuff Lite 1.09';}
+async function chooseEngine(choice){
+  if(submitted)return;
+  submitted=true;setButtons(true);
+  statusEl.className='status warn';statusEl.textContent='Requesting '+engineName(choice)+'...';
+  const q=new URLSearchParams({pipe:'0',daemon:'1',path:'/data/PIZZA_HEN/bin/pizzahen-kstuff-select.elf',args:choice});
+  try{
+    const r=await fetch('/hbldr?'+q.toString(),{cache:'no-store'});
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    statusEl.className='status ok';statusEl.textContent=engineName(choice)+' selected. PIZZA HEN is applying the engine...';
+  }catch(e){
+    submitted=false;setButtons(false);statusEl.className='status err';statusEl.textContent='Selection failed: '+e.message;
+  }
+}
+async function readActive(){
+  try{
+    const r=await fetch('/fs/data/PIZZA_HEN/runtime/kstuff_active.txt?ts='+Date.now(),{cache:'no-store'});
+    if(!r.ok)return;
+    const v=(await r.text()).trim();
+    if(v==='lite'||v==='dr'){
+      submitted=true;setButtons(true);statusEl.className='status ok';
+      statusEl.textContent='Active engine: '+engineName(v)+'. Live switching is not enabled in this hardware gate.';
+    }
+  }catch(_e){}
+}
+readActive();setInterval(readActive,1200);
+</script>
+</body>
+</html>

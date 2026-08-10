@@ -1,0 +1,2 @@
+Reference only. No CheatRunner runtime or cheat execution code is embedded.
+CheatRunner 0.17 source registry was inspected to confirm the four upstream cheat sources used by its remote-source model: TeeKay87/HEN-Cheats-Collection, etaHEN/PS5_Cheats, GoldHEN/GoldHEN_Cheat_Repository, and RDX-Sci01/HEN-PPSA-Cheats.

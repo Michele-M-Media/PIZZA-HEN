@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<system_settings version="1.0" plugin="debug_settings_plugin">
+
+  <!-- ★PIZZA HEN Toolbox -->
+  <setting_list id="id_debug_settings" title="★PIZZA HEN Toolbox (Lite)" initial_focus_to="id_game_package_installer">
+
+    <link id="id_game_package_installer" title="Package Installer" file="PkgInstaller/data/pkginstaller.xml"/>
+    <link id="id_external_hdd" title="External HDD" file="DebugSettings/data/debug_settings_external_hdd.xml" />
+
+    <toggle_switch id="id_lite_mode" title="Lite Mode" second_title="Disabling Lite Mode relaunches PIZZA HEN services and any auto load plugins" confirm="Do you want to disable lite mode?" value="0"/>
+
+
+    <list id="id_start_opt" title="Automatically Open after PIZZA HEN loads"  confirm="Changes will be applied next reboot" confirm_phrase="OK, Cancel" >
+      <list_item id="id_start_opt_1" title="None" value="0"/>
+      <list_item id="id_start_opt_1" title="Home Menu" value="1"/>
+      <list_item id="id_start_opt_2" title="Settings" value="2"/>
+      <list_item id="id_start_opt_3" title="PIZZA HEN Toolbox" value="3"/>
+      <list_item id="id_start_opt_4" title="Game Manager (if installed)" value="4"/>
+    </list>
+
+    <toggle_switch id="id_toolbox_auto_start" title="PIZZA HEN Toolbox on Startup" second_title="Toggle toolbox Startup" confirm="If disabled you will have to either re-add the toolbox or change the Startup setting from the PIZZA HEN settings menu manually, this will NOT disable any auto start plugins" value="0"/>
+
+        <!-- Credtis -->
+    <setting_list id="id_inc_project" title="Included Open-source Projects" second_title="Third-party projects used by PIZZA HEN" style="center">
+      <label id="id_project_info" title="★ Third-party projects and original authors" style="center"/>
+      <label id="id_project_1" title="PS5 Payload Dev SDK - https://github.com/ps5-payload-dev/sdk" style="center"/>
+      <label id="id_project_2" title="PS5 Payload Dev elfldr - https://github.com/ps5-payload-dev/elfldr" style="center"/>
+      <label id="id_project_3" title="PS5 Dev Byepervisor - https://github.com/PS5Dev/Byepervisor" style="center"/>
+      <label id="id_project_4" title="Kstuff by sleirsgoevy - https://github.com/etaHEN/kstuff" style="center"/>
+      <label id="id_project_5" title="7-Zip LZMA - https://www.7-zip.org/sdk.html" style="center"/>
+      <label id="id_project_6" title="Libhijacker by astrelsky - https://github.com/astrelsky/libhijacker" style="center"/>
+      <label id="id_project_7" title="Tiny-json - https://github.com/rafagafe/tiny-json" style="center"/>
+      <label id="id_project_8" title="PS5-SELF-Decrypter by Specter - https://github.com/Cryptogenic/PS5-SELF-Decrypter" style="center"/>
+      <label id="id_project_9" title="PS5Debug by CTN - https://github.com/GoldHEN/ps5debug" style="center"/>
+      <label id="id_project_10" title="LibNineS - https://github.com/buzzer-re/NineS" style="center"/>
+      <label id="id_project_11" title="Libmicrohttpd - https://www.gnu.org/software/libmicrohttpd/" style="center"/>
+    </setting_list>
+
+    <setting_list id="id_pizzahen_about" title="About PIZZA HEN">
+      <label id="id_ph_about_1" title="PIZZA HEN v0.1 - Italian Homebrew Environment" style="center"/>
+      <label id="id_ph_about_2" title="Project direction and branding: Michele Media" style="center"/>
+      <label id="id_ph_about_3" title="PIZZA HEN Toolbox - native PS5 homebrew control center" style="center"/>
+      <label id="id_ph_recipe_title" title="★ Pizza Margherita Recipe ★" style="center"/>
+      <label id="id_ph_recipe_1" title="Impasto: 500 g farina 00, 325 ml acqua, 2 g lievito, 10 g sale" style="center"/>
+      <label id="id_ph_recipe_2" title="Condimento: pomodoro, fior di latte, basilico, olio EVO" style="center"/>
+      <label id="id_ph_recipe_3" title="Stendi l'impasto e aggiungi pomodoro e fior di latte" style="center"/>
+      <label id="id_ph_recipe_4" title="Cuoci al massimo; basilico e olio EVO alla fine. PIZZA HEN e pronto!" style="center"/>
+    </setting_list>
+
+
+  </setting_list>
+
+</system_settings>

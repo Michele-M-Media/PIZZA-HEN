@@ -1,0 +1,31 @@
+PIZZA HEN — GITHUB PUBLISH STEPS
+=================================
+
+RECOMMENDED REPOSITORY NAME: PIZZA-HEN
+RECOMMENDED FIRST PUBLIC TAG: v0.1-beta
+RECOMMENDED RELEASE TYPE: Pre-release
+
+1) On GitHub create a new PUBLIC repository named PIZZA-HEN.
+   Do NOT initialize it with another README, .gitignore or license.
+
+2) Extract this ZIP, for example to C:\PIZZA-HEN
+
+3) Open PowerShell inside the extracted PIZZA-HEN folder and run:
+
+   git init
+   git branch -M main
+   git add .
+   git commit -m "PIZZA HEN v0.1 beta"
+   git remote add origin https://github.com/YOUR_GITHUB_USERNAME/PIZZA-HEN.git
+   git push -u origin main
+
+4) On GitHub open Releases -> Draft a new release.
+5) Create tag: v0.1-beta
+6) Release title: PIZZA HEN v0.1 Beta
+7) Mark: This is a pre-release
+8) Copy RELEASE_NOTES_v0.1-beta.md into the release description.
+9) After a successfully compiled and hardware-tested payload exists, attach the .bin/.elf to the GitHub Release instead of committing it into normal Git history.
+
+NOTES
+- Itemzflow PKG is deliberately not included.
+- Never paste tokens/passwords into repository files or commits.

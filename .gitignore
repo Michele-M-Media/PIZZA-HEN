@@ -1,0 +1,34 @@
+# Generated build output
+build/
+**/build/
+OUTPUT/
+BUILD_LOGS/
+*.o
+*.obj
+*.d
+*.tmp
+*.log
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Local packages / release binaries
+*.pkg
+/PIZZA-HEN*.bin
+/PIZZA-HEN*.elf
+
+# Python
+__pycache__/
+*.pyc
+
+# CMake / Ninja
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+compile_commands.json
+build.ninja
+.ninja_deps
+.ninja_log

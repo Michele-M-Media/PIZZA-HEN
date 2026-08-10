@@ -1,0 +1,24 @@
+etaHEN 2.6B DELTA REFERENCE — user supplied binary
+=================================================
+Input: etaHEN-2.6B.bin
+SHA-256: 512c74a9d6f56bb5a4ab871a0306a8cbefb8b3d5454ba8f1d833b020b245a126
+
+Directly observed in the unpacked 2.6B runtime:
+- Plugins - Applications *EXPERIMENTAL*
+- Configure plugins to launch for specific applications
+- /data/etaHEN/plugins/apps
+- /user/data/etaHEN/plugins/apps/plugins.ini
+- [DEFAULT]
+- ?autoload
+- plugin_start / plugin_stop
+- [pluginldr] PID change detected (TID: %s | PID: %d)
+- /data/etaHEN/fps_counter.sprx
+- fps_counter loaded!
+- FPS %.2f
+
+PIZZA HEN porting decision:
+- Translate etaHEN data roots to /data/PIZZA_HEN.
+- Preserve the existing PIZZA HEN daemon/toolbox instead of importing the 2.6B binary wholesale.
+- Reuse the existing FPS implementation already present in the PIZZA HEN source; only update its PS4-only UI wording.
+- Add the verified App Plugins configuration/autoload model.
+- Do not fabricate the exact 2.6B hot-unload ABI from strings alone. Hardware/runtime parity for arbitrary SPRX files remains a test gate.

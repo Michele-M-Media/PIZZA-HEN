@@ -1,0 +1,49 @@
+PIZZA HEN FIX41 MULTI-SDK + DIRECT GAME MANAGER POLICY
+
+NON-NEGOTIABLE PROJECT RULE
+- Every PIZZA HEN source-built integration must remain SDK-release-neutral.
+- No single Payload SDK release (including old V0.42-style layouts) may become a mandatory project dependency.
+- SDK selection is capability-based, not version-name based.
+
+SUPPORTED SDK DISCOVERY
+- Environment aliases, in priority order:
+  PIZZA_HEN_SDK, PS5_PAYLOAD_SDK, PS5SDK, PAYLOAD_SDK.
+- Automatic standard discovery on Linux/WSL/macOS-compatible paths.
+- Current layout: toolchain/prospero.cmake.
+- Legacy layout: cmake/toolchain-ps5.cmake.
+- Compatibility wrapper layout: bin/prospero-cmake.
+- Make-based SDK metadata may exist at toolchain/prospero.mk but is not a hard requirement.
+- Future/alternate SDK layouts can be selected without modifying PIZZA HEN source by setting:
+  PIZZA_HEN_TOOLCHAIN_FILE=/absolute/path/to/toolchain.cmake
+  or PIZZA_HEN_CMAKE_WRAPPER=/absolute/path/to/sdk-cmake-wrapper
+
+SOURCE-BUILT PIZZA HEN MODULES
+- All C/C++ PIZZA HEN subprojects receive the same selected SDK root through the compatibility alias layer:
+  PIZZA_HEN_SDK_ROOT -> PS5_PAYLOAD_SDK -> PS5SDK.
+- Subprojects must not hard-code a release directory name.
+- Tool discovery such as llvm-objcopy is capability-based.
+
+FROZEN THIRD-PARTY RUNTIME ASSETS
+- ShadowMountPlus 1.6beta16 pristine, websrv 0.34, KStuff DR 1.2 test1, ftpsrv 0.21 and ps5debug-NG 1.3.0 are frozen prebuilt runtime assets.
+- They are verified by SHA-256 and are not rebuilt against the locally selected SDK, so an SDK change cannot alter those frozen binaries.
+- KStuff Lite 1.09 remains the frozen hardware baseline input.
+
+BACKEND APPLICATIONS
+- Itemzflow v1.14 and CiborgEcPKGMAN v4.05 are supplied as prebuilt PKG backends and are not compiled by the PIZZA HEN SDK build.
+- The PIZZA HEN integration/orchestration layer around them remains source-built through the multi-SDK compatibility layer.
+
+HOST TEST PORTABILITY
+- Static tests use Python standard library only.
+- No pip-only dependency such as Pillow/PIL is required by the build gate.
+- This keeps WSL/Linux/macOS host validation independent from extra Python packages.
+
+GUARANTEE BOUNDARY
+- PIZZA HEN is designed so no known/current/legacy SDK layout is intentionally excluded.
+- Unknown future SDKs cannot be claimed as compiled/tested before they exist, but the explicit toolchain/wrapper override allows them to be adopted without pinning PIZZA HEN to one release.
+
+FIX41 GAME MANAGER SERVICE RULE
+------------------
+Game Manager application launching uses the exported SceSystemService service and
+therefore does not depend on a firmware-relative LncUtil offset or on a single
+PS5 Payload SDK release. All source-built PIZZA HEN components continue to use
+the capability-based SDK/toolchain selector.

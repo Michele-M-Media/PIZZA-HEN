@@ -1,0 +1,8 @@
+*.o
+*.elf
+daemon.lock
+debug.log
+notify.txt
+src/notify_icon_asset.c
+refs/*
+docs/*
