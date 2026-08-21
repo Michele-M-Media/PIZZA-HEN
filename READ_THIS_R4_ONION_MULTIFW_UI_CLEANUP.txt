@@ -1,0 +1,20 @@
+PIZZA HEN R4 — SOURCE-GROUNDED DELTA FROM HARDWARE-PASS R3
+
+HARDWARE-PASS BASE LEFT IN PLACE:
+- dual Media tiles PZHN00001 / PZHN00002
+- Debug Services -> original v0.1 launcher/helper/bridge
+- KStuff Lite 1.10
+
+ONLY INTENTIONAL R4 CHANGES:
+1. Exact OnionHEN 0.0.10 debug_settings_route_policy.hpp copied byte-for-byte.
+   - <= 10.60: debug_settings (same route as hardware-PASS 10.01 R3)
+   - >= 11.00: debug_settings_old
+   The daemon's three v0.1 Toolbox open/reopen calls now obtain their URI from this policy.
+2. Debug Services XML: Plugins / Payload ELFs row hidden.
+3. Debug Services XML: Cheats — Unified Repository row hidden.
+4. Game Manager UI block hidden in XML comment, NOT deleted.
+   ITEM00001 handler/integration remains untouched.
+
+IMPORTANT:
+- Onion route selection is source-grounded, but hardware proof remains R3/10.01 only until testers validate other firmware.
+- No Onion BootHelper/custom URI/new ShellUI navigation architecture was added.

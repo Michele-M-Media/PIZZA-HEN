@@ -1,0 +1,12 @@
+PIZZA HEN v0.1 REBASE - COMPILE REPAIR
+
+The v0.1 daemon source embeds daemon/assets/ps5debug.elf via .incbin.
+The release source header Source Code/lib/ps5debug.elf.h contains the exact legacy ELF bytes, while the source ZIP omitted the materialized binary file.
+This repair materializes ONLY that missing file from the v0.1 header. No daemon, util, shellui, toolbox_action, bootstrap runtime source, KStuff, ShadowMount, websrv, or Toolbox UI logic is changed.
+
+Materialized file:
+Source Code/daemon/assets/ps5debug.elf
+SHA256: dae56bf7a30caa5f4eee929ec6a3dd0051e6da1a3651d9b20c299f339f36e43f
+Size: 696400 bytes
+
+The SHA matches PIZZA HEN v0.1 SHA256SUMS_PUBLIC.txt.

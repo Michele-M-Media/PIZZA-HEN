@@ -1,0 +1,18 @@
+PIZZA HEN R7.13 - CheatRunner Game Options Shortcut
+
+Purpose
+-------
+Add exactly one simple Game Options link named "CheatRunner".
+When the PS5 game icon Options menu builds MENU_ID_CHECK_PATCH, PIZZA HEN
+uses that existing slot for:
+
+  CheatRunner
+    -> http://127.0.0.1:8080/fs/data/PIZZA_HEN/ui/toolbox-launcher.html#cheats
+
+The Toolbox #cheats page already starts CheatRunner on demand and embeds its
+v0.17 dashboard. This change does NOT add a new ShellUI hook, preload,
+background service, CheatRunner backend, direct :9999 shortcut, or Toolbox
+auto-injection.
+
+R7.12 PHU/KStuff FW12.20+ repair and R7.11 DPIv2 etaHEN 2.6B repair are kept.
+Hardware status: NOT TESTED until reported by a tester.

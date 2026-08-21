@@ -15,12 +15,31 @@ along with this program; see the file COPYING. If not, see
 <http://www.gnu.org/licenses/>.  */
 
 #include "../include/CheatManager.hpp"
+#include <atomic>
 
 CheatCache cache;
 static GameCheat *currentGameCheat = nullptr;
-bool monitorGameRunning = false;
-pthread_t pthreadMonitor;
+static std::atomic_bool monitorGameRunning{false};
+static pthread_t pthreadMonitor{};
+static bool monitorThreadJoinable = false;
+static std::string currentGameTitleId;
+static std::string currentGameVersion;
 extern "C" void notify(bool show_watermark, const char *text, ...);
+
+static void stopCheatMonitorAndJoin() {
+  if (monitorThreadJoinable) {
+    monitorGameRunning.store(false);
+    void *ret = nullptr;
+    const int rc = pthread_join(pthreadMonitor, &ret);
+    if (rc != 0)
+      etaHEN_log("Cheat monitor join failed: %d", rc);
+    monitorThreadJoinable = false;
+  } else {
+    monitorGameRunning.store(false);
+  }
+  currentGameTitleId.clear();
+  currentGameVersion.clear();
+}
 
 
 //
@@ -40,7 +59,7 @@ void replaceAllOccurrences(std::string &source,
 
 void *CheatManager::MonitorOpenGame(CheatMetadata *cheatMeta) {
 
-  while (monitorGameRunning) {
+  while (monitorGameRunning.load()) {
     if (sceSystemServiceGetAppIdOfRunningBigApp() < 0) {
       break;
     }
@@ -67,7 +86,7 @@ void *CheatManager::MonitorOpenGame(CheatMetadata *cheatMeta) {
   cleanParsed(cheatMeta->mc4);
   cleanParsed(cheatMeta->shn);
 
-  monitorGameRunning = false;
+  monitorGameRunning.store(false);
 
   return nullptr;
 }
@@ -346,6 +365,9 @@ void ParseFile(CheatExtType extensionType) {
 // Parse the json.txt, m4.txt and shn.txt file to build the lookup table
 //
 void *MakeInitialCheatCache(void *) {
+  // The monitor owns a pointer into CheatCache; join it before invalidating
+  // cache entries during reload/update.
+  stopCheatMonitorAndJoin();
   cache.clear();
   ParseFile(JSON_CHEAT);
   ParseFile(MC4_CHEAT);
@@ -362,8 +384,17 @@ GameCheat *CheatManager::GetGameCheat(const std::string &name,
   if (cache.empty())
     MakeInitialCheatCache(NULL);
 
-  auto it = cache.find(name);
+  const bool big_app_running = sceSystemServiceGetAppIdOfRunningBigApp() >= 0;
 
+  // Retire stale state before resolving a different title/version. Game Options
+  // previews also retire any old monitor because no target process is running.
+  if (monitorThreadJoinable &&
+      (!big_app_running || currentGameTitleId != name ||
+       currentGameVersion != version)) {
+    stopCheatMonitorAndJoin();
+  }
+
+  auto it = cache.find(name);
   if (it == cache.end()) {
     etaHEN_log("No cheat exists for %s", name.c_str());
     return nullptr;
@@ -371,54 +402,54 @@ GameCheat *CheatManager::GetGameCheat(const std::string &name,
 
   CheatMetadata *meta = &it->second;
   GameCheat *cheat = nullptr;
-  // GameCheat* tmp = nullptr;
-
-  if (meta->json.size()) {
+  if (meta->json.size())
     cheat = LoadCheat(meta, version, JSON_CHEAT, cheat);
-    // if (tmp) cheat = tmp;
-  }
-
-  if (meta->mc4.size()) {
+  if (meta->mc4.size())
     cheat = LoadCheat(meta, version, MC4_CHEAT, cheat);
-    // if (tmp) cheat = tmp;
-  }
-
-  if (meta->shn.size()) {
+  if (meta->shn.size())
     cheat = LoadCheat(meta, version, SHN_CHEAT, cheat);
-    // if (tmp) cheat = tmp;
+
+  if (!cheat)
+    return nullptr;
+
+  etaHEN_log("Loaded cheat for %s", cheat->name.c_str());
+
+  // The Game Options menu may preview cheats before launch. Returning parsed
+  // metadata is enough; do not expose it as active/toggleable process state.
+  if (!big_app_running) {
+    etaHEN_log("Cheat preview only for %s version %s (game not running)",
+               name.c_str(), version.c_str());
+    return cheat;
   }
 
-  if (cheat) {
-    if (currentGameCheat != nullptr && currentGameCheat != cheat) {
-      //
-      // The game has changed, update the gameCheat attributes
-      //
-      for (auto &cheat : currentGameCheat->cheats) {
-        cheat.enabled = false; // Set enabled to false for each cheat
-      }
-    }
-
-    if (!currentGameCheat) {
-      //
-      // Launch the monitor thread
-      //
-      if (monitorGameRunning) {
-        monitorGameRunning = false;
-        void *ret;
-        pthread_join(pthreadMonitor, &ret);
-      }
-
-      //etaHEN_log("Starting monitor thread...");
-      monitorGameRunning = true;
-      pthread_create(&pthreadMonitor, NULL, (void *(*)(void *))MonitorOpenGame,
-                     meta);
-      pthread_detach(pthreadMonitor);
-    }
-
-    etaHEN_log("Loaded cheat for %s", cheat->name.c_str());
+  if (currentGameCheat != nullptr && currentGameCheat != cheat) {
+    for (auto &entry : currentGameCheat->cheats)
+      entry.enabled = false;
   }
 
-  currentGameCheat = cheat;
+  if (!currentGameCheat) {
+    // Publish first, then start the monitor. This closes the old race where an
+    // immediately exiting monitor could run before currentGameCheat was set.
+    currentGameCheat = cheat;
+    currentGameTitleId = name;
+    currentGameVersion = version;
+    monitorGameRunning.store(true);
+    const int rc = pthread_create(&pthreadMonitor, NULL,
+                                  (void *(*)(void *))MonitorOpenGame, meta);
+    if (rc == 0) {
+      monitorThreadJoinable = true;
+    } else {
+      etaHEN_log("Failed to create cheat monitor thread: %d", rc);
+      monitorGameRunning.store(false);
+      currentGameCheat = nullptr;
+      currentGameTitleId.clear();
+      currentGameVersion.clear();
+    }
+  } else {
+    currentGameCheat = cheat;
+    currentGameTitleId = name;
+    currentGameVersion = version;
+  }
 
   return cheat;
 }
@@ -530,12 +561,18 @@ bool CheatManager::ToggleCheat(int pid, const std::string &title_id,
   if (currentGameCheat == nullptr) {
     return false;
   }
+  if (currentGameTitleId != title_id) {
+    etaHEN_log("Rejecting stale cheat state: active %s, requested %s",
+               currentGameTitleId.c_str(), title_id.c_str());
+    return false;
+  }
 
   OrbisKernelSwVersion sys_ver;
   sceKernelGetProsperoSystemSwVersion(&sys_ver);
   int fw = (sys_ver.version >> 16);
 
-  if (cheat_index < 0 || cheat_index > currentGameCheat->cheats.size()) {
+  if (cheat_index < 0 ||
+      static_cast<size_t>(cheat_index) >= currentGameCheat->cheats.size()) {
     etaHEN_log("Cheat index %d is 0 or greater than the size", cheat_index);
     return false;
   }
@@ -1408,6 +1445,7 @@ void update_cheat_caches() {
 }
 
 void *ReloadCheatsCache(void *) {
+  stopCheatMonitorAndJoin();
   update_cheat_caches();
   return MakeInitialCheatCache(NULL);
 }

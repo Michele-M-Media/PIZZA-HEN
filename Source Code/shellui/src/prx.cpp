@@ -17,6 +17,8 @@ along with this program; see the file COPYING. If not, see
 
 #include "Detour.h"
 #include "HookedFuncs.hpp"
+#include "debug_services_route.hpp"
+#include "hook_lifecycle.hpp"
 #include "defs.h"
 #include "external_symbols.hpp"
 #include "ipc.hpp"
@@ -29,6 +31,9 @@ along with this program; see the file COPYING. If not, see
 
 #include <unistd.h>
 #include <util.hpp>
+
+// R7.5.3.1: local forward declaration; frozen HookedFuncs.hpp remains byte-exact.
+void PizzahenServiceWebControl();
 
 std::string dec_xml_str;
 std::string dec_list_xml_str;
@@ -51,6 +56,9 @@ MonoObject* Game = nullptr;
 MonoImage * react_common_img = nullptr;
 
 bool hooked = false;
+bool g_pizzahen_shell_service_mode = false;
+bool g_pizzahen_overlay_apply_requested = false;
+static int g_pizzahen_service_bigapp_id = -2;
 bool has_hv_bypass = false;
 bool is_testkit = false;
 
@@ -384,6 +392,24 @@ ssize_t read_hook(int fd, void* buf, size_t count) {
 }
 
 int get_ip_address(char* ip_address);
+
+static bool pizzahen_resolve_game_scene() {
+    if (Game) return true;
+    if (!AppSystem_img || !mono_class_from_name || !mono_class_get_method_from_name ||
+        !mono_string_new || !mono_domain_get || !mono_runtime_invoke) return false;
+    MonoClass* layer = mono_class_from_name(AppSystem_img, "Sce.Vsh.ShellUI.AppSystem", "LayerManager");
+    if (!layer) return false;
+    MonoMethod* find = mono_class_get_method_from_name(layer, "FindContainerSceneByPath", 1);
+    if (!find) return false;
+    MonoString* path = mono_string_new(mono_domain_get(), "Game");
+    void* args[1] = { path };
+    MonoObject* exception = nullptr;
+    MonoObject* scene = mono_runtime_invoke(find, nullptr, args, &exception);
+    if (exception || !scene) return false;
+    Game = scene;
+    return true;
+}
+
 void OnRender_Hook(MonoObject* instance)
 {
     static bool Do_Once = false;
@@ -410,6 +436,40 @@ void OnRender_Hook(MonoObject* instance)
     static int wait = 0;
     int SOC_temp = 0;
     int CPU_temp = 0;
+
+    // FIX70.33 service-only mode: consume web controls on the PUI Update
+    // callback and apply overlay changes on ShellUI's managed thread.
+    if (g_pizzahen_shell_service_mode) {
+        static unsigned int control_tick = 0;
+        if (++control_tick >= 2) { control_tick = 0; PizzahenServiceWebControl(); }
+
+        const int bigapp_id = sceSystemServiceGetAppIdOfRunningBigApp ?
+            sceSystemServiceGetAppIdOfRunningBigApp() : -1;
+        if (bigapp_id != g_pizzahen_service_bigapp_id) {
+            g_pizzahen_service_bigapp_id = bigapp_id;
+            Game = nullptr;
+            rootWidget = nullptr;
+            Do_Once = false;
+            g_pizzahen_overlay_apply_requested = true;
+        }
+
+        const bool want_overlay = global_conf.overlay_cpu || global_conf.all_cpu_usage ||
+                                  global_conf.overlay_ram || global_conf.overlay_gpu ||
+                                  global_conf.overlay_fps || global_conf.overlay_ip;
+        if ((g_pizzahen_overlay_apply_requested || want_overlay) && !pizzahen_resolve_game_scene()) {
+            OnRender_orig(instance);
+            return;
+        }
+        if (g_pizzahen_overlay_apply_requested) {
+            RemoveGameWidget(REMOVE_ALL_OVERLAYS);
+            Do_Once = false;
+            g_pizzahen_overlay_apply_requested = false;
+        }
+        if (!want_overlay) {
+            OnRender_orig(instance);
+            return;
+        }
+    }
 
     if (!Do_Once)
     {
@@ -693,7 +753,7 @@ void* dialogue_thread(void* arg) {
         const bool selector_active = if_exists("/system_tmp/pizzahen_kstuff_selector_active");
         if (selector_active && !selector_opened) {
             shellui_log("FIX23: opening PIZZA HEN KStuff selector");
-            GoToURI("pssettings:play?mode=settings&function=debug_settings");
+            GoToURI(pizzahen_debug_services_uri());
             touch_file("/system_tmp/pizzahen_kstuff_selector_ui_opened");
             selector_opened = true;
         } else if (!selector_active && selector_opened) {
@@ -709,6 +769,10 @@ int main(int argc, char const *argv[]) {
   if (hooked) {
     return 0;
   }
+
+  // OnionHEN hook transaction: every callback stays pass-through until the
+  // complete ShellUI hook set for this invocation has committed.
+  shellui_hooks_begin_install();
 
   static ssize_t(*read)(int fd, void* buf, size_t count) = nullptr;
   static int (*sceAppInstUtilInstallByPackage)(MetaInfo * arg1, SceAppInstallPkgInfo * pkg_info, PlayGoInfo * arg2) = nullptr;
@@ -808,25 +872,41 @@ int main(int argc, char const *argv[]) {
   KERNEL_DLSYM(libmono_handle, mono_domain_unload);
   KERNEL_DLSYM(libmono_handle, mono_string_to_utf8);
 
-  if (!mono_object_to_string || !mono_get_root_domain ||
-      !mono_property_get_get_method || !mono_property_get_set_method ||
-      !mono_class_get_property_from_name || !mono_class_from_name ||
-      !mono_runtime_invoke || !mono_array_new || !mono_string_new ||
-      !mono_jit_set_aot_only || !mono_jit_init_version || !mono_object_new ||
-      !mono_object_unbox || !mono_set_dirs || !mono_compile_method ||
-      !mono_assembly_get_image || !mono_domain_assembly_open ||
-      !mono_get_byte_class || !mono_thread_attach || !mono_object_get_class ||
-      !mono_vtable_get_static_field_data || !mono_class_get_method_from_name ||
-      !mono_class_get_field_from_name || !mono_aot_get_method ||
-      !mono_field_static_set_value || !mono_assembly_setrootdir || !mono_free ||
-      !mono_gchandle_new || !mono_image_open_from_data ||
-      !mono_runtime_object_init || !mono_domain_get ||
-      !mono_assembly_load_from || !mono_method_desc_new ||
-      !mono_method_desc_search_in_class || !mono_method_desc_free ||
-      !mono_object_new_specific || !mono_thread_detach ||
-      !mono_array_addr_with_size || !mono_thread_current ||
-      !mono_class_vtable || !mono_domain_unload || !mono_string_to_utf8) {
-    shellui_log("Failed to resolve mono symbols");
+  // R7.3: FIX70.37 already proved that a service-only ShellUI consumer must
+  // not require the complete legacy Settings Mono surface.  The Game Options
+  // service needs only assembly lookup + method compilation + strings.
+  const bool shell_service_requested =
+      if_exists("/system_tmp/pizzahen_shell_service_mode");
+  const bool game_options_service_requested = shell_service_requested;
+  [[maybe_unused]] const bool game_options_mono_ready =
+      mono_get_root_domain && mono_thread_attach && mono_domain_get &&
+      mono_domain_assembly_open && mono_assembly_get_image &&
+      mono_class_from_name && mono_class_get_method_from_name && mono_compile_method &&
+      mono_string_new && mono_string_to_utf8 && mono_free;
+
+  const bool full_mono_ready =
+      mono_object_to_string && mono_get_root_domain &&
+      mono_property_get_get_method && mono_property_get_set_method &&
+      mono_class_get_property_from_name && mono_class_from_name &&
+      mono_runtime_invoke && mono_array_new && mono_string_new &&
+      mono_jit_set_aot_only && mono_jit_init_version && mono_object_new &&
+      mono_object_unbox && mono_set_dirs && mono_compile_method &&
+      mono_assembly_get_image && mono_domain_assembly_open &&
+      mono_get_byte_class && mono_thread_attach && mono_object_get_class &&
+      mono_vtable_get_static_field_data && mono_class_get_method_from_name &&
+      mono_class_get_field_from_name && mono_aot_get_method &&
+      mono_field_static_set_value && mono_assembly_setrootdir && mono_free &&
+      mono_gchandle_new && mono_image_open_from_data &&
+      mono_runtime_object_init && mono_domain_get &&
+      mono_assembly_load_from && mono_method_desc_new &&
+      mono_method_desc_search_in_class && mono_method_desc_free &&
+      mono_object_new_specific && mono_thread_detach &&
+      mono_array_addr_with_size && mono_thread_current &&
+      mono_class_vtable && mono_domain_unload && mono_string_to_utf8;
+
+  if (shell_service_requested ? !full_mono_ready : !full_mono_ready) {
+    shellui_log("Failed to resolve %s Mono symbols",
+                shell_service_requested ? "Shell service" : "full");
     return -1;
   }
 
@@ -913,7 +993,10 @@ int main(int argc, char const *argv[]) {
   sceKernelGetProsperoSystemSwVersion(&sw);
   is_3xx = (sw.version < 0x4000042);
   is_6xx = (sw.version >= 0x6000000);
-  shellui_log("System Software Version: %s is_3xx: %s", sw.version_str, is_3xx ? "Yes" : "No");
+  pizzahen_configure_debug_services_route(sw.version);
+  shellui_log("System Software Version: %s is_3xx: %s DebugServicesRoute: %s",
+              sw.version_str, is_3xx ? "Yes" : "No",
+              pizzahen_debug_services_uses_old_route() ? "debug_settings_old" : "debug_settings");
 
 #if 0
   sceLncUtilLaunchApp_dyn = reinterpret_cast<SceLncUtilLaunchAppType>(reinterpret_cast<uintptr_t>(sceSystemServiceLaunchApp) + is_3xx ? 0x1250 : 0x1260));
@@ -928,6 +1011,23 @@ int main(int argc, char const *argv[]) {
       shellui_log("Settings loaded successfully");
     }
 
+    // R7.5: Debug Services must not resurrect the legacy etaHEN/ShellUI
+    // performance overlays from persisted config.  The startup Game Options
+    // service is intentionally excluded.  This does NOT touch the separate
+    // PHU Overlay payload or /data/phu_overlay.lock owned by the PIZZA Toolbox.
+    if (!game_options_service_requested) {
+      global_conf.overlay_ram = false;
+      global_conf.overlay_cpu = false;
+      global_conf.overlay_gpu = false;
+      global_conf.overlay_fps = false;
+      global_conf.overlay_ip = false;
+      global_conf.overlay_kstuff = false;
+      global_conf.overlay_kstuff_active = false;
+      global_conf.all_cpu_usage = false;
+      unlink("/system_tmp/fps_enabled");
+      shellui_log("PIZZA HEN R7.5: Debug Services legacy overlays forced OFF; PHU Overlay untouched");
+    }
+
     Root_Domain = mono_get_root_domain();
     if (!Root_Domain) {
       shellui_log( "failed to get shellui root domain");
@@ -937,6 +1037,201 @@ int main(int argc, char const *argv[]) {
     }
 
     mono_thread_attach(Root_Domain);
+
+    // R7.5.3: restore the FIX70.33 source-grounded lazy Shell service.
+    // It is started only on demand from the Toolbox, never immediately after
+    // KStuff selection. Debug Services remains a separate launcher/path.
+    if (shell_service_requested) {
+      static const char *PIZZAHEN_SHELL_SERVICE_ONLINE = "/system_tmp/pizzahen_shell_service_online";
+      static const char *PIZZAHEN_SHELL_SERVICE_PID = "/system_tmp/pizzahen_shell_service_pid";
+      g_pizzahen_shell_service_mode = true;
+
+      AppSystem_img = getDLLimage(appsystem_dll_name.c_str());
+      pui_img = getDLLimage("Sce.PlayStation.PUI.dll");
+      if (!AppSystem_img || !pui_img) {
+        shellui_log("PIZZA HEN R7.5.3: Shell service missing AppSystem/PUI");
+        unlink(PIZZAHEN_SHELL_SERVICE_ONLINE);
+        set_proc_authid(pid, old_authid);
+        return -1;
+      }
+      Game = nullptr;
+
+      const uint64_t service_on_render = Get_Address_of_Method(
+          pui_img, "Sce.PlayStation.PUI", "Application", "Update", 0);
+      if (!service_on_render) {
+        shellui_log("PIZZA HEN R7.5.3: PUI Application.Update unavailable");
+        unlink(PIZZAHEN_SHELL_SERVICE_ONLINE);
+        set_proc_authid(pid, old_authid);
+        return -1;
+      }
+      OnRender_orig = (void(*)(MonoObject*))DetourFunction(service_on_render, (void*)&OnRender_Hook);
+      if (!OnRender_orig) {
+        shellui_log("PIZZA HEN R7.5.3: PUI service Update detour failed");
+        unlink(PIZZAHEN_SHELL_SERVICE_ONLINE);
+        set_proc_authid(pid, old_authid);
+        return -1;
+      }
+
+      // Curated handlers from FIX70.33: registry Title IDs, KStuff game
+      // lifecycle, controller shortcuts and Game Options. Missing optional
+      // images do not take down the mandatory web-control/overlay consumer.
+      MonoImage *service_core = getDLLimage(core_dll.c_str());
+      MonoImage *service_capture = getDLLimage(capture_menu_dll.c_str());
+      MonoImage *service_lnc = getDLLimage("Sce.Vsh.LncUtilWrapper.dll");
+      react_common_img = getDLLimage("ReactNative.Vsh.Common.dll");
+      MonoImage *service_react_shell = getDLLimage("Sce.Vsh.ShellUI.ReactNativeShellApp.dll");
+      MonoImage *service_react_pui = getDLLimage(reactpui_dll.c_str());
+      const bool service_string_api = (mono_string_to_utf8 && mono_free);
+
+      if (sceRegMgrGetInt) {
+        auto regmgr_trampoline = (int(*)(long, int*))DetourFunction(
+            (uintptr_t)sceRegMgrGetInt, (void*)&sceRegMgrGetInt_hook);
+        if (regmgr_trampoline) sceRegMgrGetInt = regmgr_trampoline;
+      }
+      if (service_lnc && service_string_api) {
+        const uint64_t launch_method = Get_Address_of_Method(
+            service_lnc, "Sce.Vsh.LncUtil", "LncUtilWrapper", "LaunchApp", 4);
+        if (launch_method)
+          LaunchApp_orig = (int(*)(MonoString*, uint64_t*, int, LaunchAppParam*))
+              DetourFunction(launch_method, (void*)&LaunchApp);
+        const uint64_t kill_method = Get_Address_of_Method(
+            service_lnc, "Sce.Vsh.LncUtil", "LncUtilWrapper", "KillAppWithReason", 2);
+        if (kill_method) (void)DetourFunction(kill_method, (void*)&KillAppWithReason_Hook);
+      }
+      if (service_core) {
+        const uint64_t gamepad_method = Get_Address_of_Method(
+            service_core, input_namespace.c_str(), gamepad_class.c_str(), getdata_method.c_str(), 1);
+        if (gamepad_method)
+          GetData = (GamePadData(*)(int))DetourFunction(gamepad_method, (void*)&GetData_hook);
+      }
+      if (service_capture) {
+        const uint64_t capture4 = Get_Address_of_Method(
+            service_capture, capture_namespace.c_str(), capture_controller.c_str(), capture_screen.c_str(), 4);
+        if (capture4)
+          CaptureScreen_orig_old = (void(*)(MonoObject*, int, long, int, MonoObject*))
+              DetourFunction(capture4, (void*)&CaptureScreen_old);
+        if (!CaptureScreen_orig_old) {
+          const uint64_t capture5 = Get_Address_of_Method(
+              service_capture, capture_namespace.c_str(), capture_controller.c_str(), capture_screen.c_str(), 5);
+          if (capture5)
+            CaptureScreen_orig_new = (void(*)(MonoObject*, int, long, int, MonoString*, MonoObject*))
+                DetourFunction(capture5, (void*)&CaptureScreen_new);
+        }
+        const uint64_t share_method = Get_Address_of_Method(
+            service_capture, capture_namespace.c_str(), event_manager.c_str(), onshare_button.c_str(), 1);
+        if (share_method)
+          OnShareButton_orig = (void(*)(MonoObject*))DetourFunction(share_method, (void*)&OnShareButton);
+      }
+      if (service_react_shell && service_string_api) {
+        const uint64_t option_method = Get_Address_of_Method(
+            service_react_shell, "ReactNative.Modules.ShellUI.HomeUI",
+            "OptionMenu", "createJson", 8);
+        if (option_method) {
+          void *trampoline = DetourFunction(option_method, (void*)&createJson_hook);
+          if (trampoline)
+            createJson = (void(*)(MonoObject*, MonoObject*, MonoString*, MonoString*,
+                                  MonoString*, MonoString*, MonoString*, MonoObject*, bool))trampoline;
+        }
+      }
+
+      // R7.6: native game Options -> PIZZA HEN Cheats. These are not new
+      // hooks: they are the exact Legacy/BootHelper/manifest handlers already
+      // used by the full etaHEN-derived ShellUI path below. The only change is
+      // ownership: the lazy service installs them on demand after Toolbox open,
+      // never immediately after KStuff selection.
+      MonoImage *service_legacy = getDLLimage(legacy_dec.c_str());
+      MonoImage *service_mscorlib = getDLLimage(mscorlib_dll.c_str());
+      if (!service_legacy || !service_mscorlib) {
+        shellui_log("PIZZA HEN R7.6: native Cheats missing Legacy/mscorlib image");
+        unlink(PIZZAHEN_SHELL_SERVICE_ONLINE);
+        set_proc_authid(pid, old_authid);
+        return -1;
+      }
+
+      const uint64_t service_onpress = Get_Address_of_Method(
+          service_legacy, UI3_dec.c_str(), SettingsPage_dec.c_str(),
+          onpressed_method.c_str(), 2);
+      if (service_onpress)
+        oOnPress = (int(*)(MonoObject*, MonoObject*, MonoObject*))
+            DetourFunction(service_onpress, (void*)&OnPress_Hook);
+
+      const uint64_t service_boot3 = Get_Address_of_Method(
+          AppSystem_img, appsystem_namespace.c_str(), boot_helper.c_str(),
+          boot_method.c_str(), 3);
+      if (service_boot3)
+        boot_orig = (bool(*)(MonoString*, int, MonoString*))
+            DetourFunction(service_boot3, (void*)&uri_boot_hook);
+      if (!boot_orig) {
+        const uint64_t service_boot2 = Get_Address_of_Method(
+            AppSystem_img, appsystem_namespace.c_str(), boot_helper.c_str(),
+            boot_method.c_str(), 2);
+        if (service_boot2)
+          boot_orig_2 = (bool(*)(MonoString*, int))
+              DetourFunction(service_boot2, (void*)&uri_boot_hook_2);
+      }
+
+      const uint64_t service_oncreating = Get_Address_of_Method(
+          service_legacy, UI3_dec.c_str(), SettingsPage_dec.c_str(),
+          oncreating_method.c_str(), 1);
+      if (service_oncreating)
+        oOnPreCreate = (int(*)(MonoObject*, MonoObject*))
+            DetourFunction(service_oncreating, (void*)&OnPreCreate_Hook);
+
+      const uint64_t service_manifest = Get_Address_of_Method(
+          service_mscorlib, sys_reflection_dec.c_str(),
+          is_3xx ? "Assembly" : RuntimeAssembly_dec.c_str(),
+          GetManifestResourceStream_dec.c_str(), 1);
+      if (service_manifest)
+        GetManifestResourceStream_Original = (uint64_t(*)(uint64_t, MonoString*))
+            DetourFunction(service_manifest, (void*)&GetManifestResourceStream_Hook);
+
+      if (!oOnPress || (!boot_orig && !boot_orig_2) || !oOnPreCreate ||
+          !GetManifestResourceStream_Original) {
+        shellui_log("PIZZA HEN R7.6: native Cheats hook chain incomplete");
+        unlink(PIZZAHEN_SHELL_SERVICE_ONLINE);
+        set_proc_authid(pid, old_authid);
+        return -1;
+      }
+
+      if (service_react_pui) {
+        const uint64_t nav_addr = Get_Address_of_Method(
+            service_react_pui, "ReactNative.Views.UI3.View",
+            "ReactNavigatorManager", "UpdateNavigationState", 1);
+        if (nav_addr)
+          ReactNavigatorManager_UpdateNavigationState_Orig =
+              (void(*)(MonoObject*, MonoObject*))DetourFunction(
+                  nav_addr, (void*)&ReactNavigatorManager_UpdateNavigationState_Hook);
+      }
+      if (service_react_shell) {
+        const uint64_t getmodel_addr = Get_Address_of_Method(
+            service_react_shell, "ReactNative.Modules.ShellUI.Settings",
+            "DebugSettingsModule", "GetModel", 2);
+        if (getmodel_addr)
+          DebugSettings_GetModel_Orig =
+              (void(*)(MonoObject*, MonoObject*, MonoObject*))DetourFunction(
+                  getmodel_addr, (void*)&DebugSettings_GetModel_Hook);
+      }
+
+      if (read && !read_orig)
+        read_orig = (ssize_t(*)(int, void*, size_t))DetourFunction((uintptr_t)read, (void*)&read_hook);
+
+      if (if_exists("/system_tmp/kstuff_paused")) {
+        pause_resume_kstuff(NOT_PAUSED, false);
+        unlink("/system_tmp/kstuff_paused");
+      }
+      set_proc_authid(pid, old_authid);
+      FILE *service_pid = fopen(PIZZAHEN_SHELL_SERVICE_PID, "w");
+      if (service_pid) { fprintf(service_pid, "%d\n", pid); fflush(service_pid); fsync(fileno(service_pid)); fclose(service_pid); }
+      g_pizzahen_service_bigapp_id = sceSystemServiceGetAppIdOfRunningBigApp ?
+          sceSystemServiceGetAppIdOfRunningBigApp() : -1;
+      shellui_hooks_publish_ready();
+      hooked = true;
+      touch_file(PIZZAHEN_SHELL_SERVICE_ONLINE);
+      touch_file("/system_tmp/toolbox_online");
+      unlink("/system_tmp/pizzahen_shell_service_mode");
+      shellui_log("PIZZA HEN R7.5.3: source-grounded Shell service ONLINE");
+      while (true) sleep(0x100000);
+    }
 
     const char *enc_ver = "\x30\x44\x0d\x1c\x13\x08\x69\x35\x3d\x44\x0d\x46";
     std::vector<unsigned char> dev_ver_string = encrypt_decrypt((unsigned char *)enc_ver, strlen(enc_ver), key_base64);
@@ -1129,11 +1424,33 @@ int main(int argc, char const *argv[]) {
 	}
 #endif
 
-    void* createJson_addr =  DetourFunction(Get_Address_of_Method(ReactNativeShellAppReactNativeShellApp_img, "ReactNative.Modules.ShellUI.HomeUI", "OptionMenu", "createJson", 8), (void * )&createJson_hook);
-    createJson = (void( * )(MonoObject *, MonoObject * , MonoString * , MonoString * , MonoString * , MonoString * , MonoString * , MonoObject * , bool)) createJson_addr;
-    if (!createJson_addr) {
-      shellui_log("Failed to detour Func Set -3");
-      return -1;
+    // R7.5.3: the lazy Shell service owns OptionMenu/createJson.
+    // Debug Services keeps its v0.1 path but must not stack this detour.
+    bool game_options_service_current = false;
+    if (if_exists("/system_tmp/pizzahen_shell_service_online")) {
+      FILE *service_pid = fopen("/system_tmp/pizzahen_shell_service_pid", "r");
+      int service_pid_value = -1;
+      if (service_pid) {
+        if (fscanf(service_pid, "%d", &service_pid_value) != 1) service_pid_value = -1;
+        fclose(service_pid);
+      }
+      game_options_service_current = (service_pid_value == pid);
+    }
+    if (!game_options_service_current) {
+      void* createJson_addr = DetourFunction(
+          Get_Address_of_Method(ReactNativeShellAppReactNativeShellApp_img,
+                                "ReactNative.Modules.ShellUI.HomeUI",
+                                "OptionMenu", "createJson", 8),
+          (void*)&createJson_hook);
+      createJson = (void(*)(MonoObject*, MonoObject*, MonoString*, MonoString*,
+                            MonoString*, MonoString*, MonoString*, MonoObject*, bool))
+                       createJson_addr;
+      if (!createJson_addr) {
+        shellui_log("Failed to detour Func Set -3");
+        return -1;
+      }
+    } else {
+      shellui_log("PIZZA HEN R7.3: createJson already owned by resident Game Options service");
     }
 
     LaunchApp_orig = (int( * )(MonoString * , uint64_t * , int, LaunchAppParam * )) DetourFunction(Get_Address_of_Method(lnc_img, "Sce.Vsh.LncUtil", "LncUtilWrapper", "LaunchApp", 4), (void * )&LaunchApp);
@@ -1176,16 +1493,52 @@ int main(int argc, char const *argv[]) {
        }
     }
 #endif
-    oOnPress = (int( * )(MonoObject * , MonoObject * , MonoObject * )) DetourFunction(Get_Address_of_Method(leg_img, UI3_dec.c_str(), SettingsPage_dec.c_str(), onpressed_method.c_str(), 2), (void * )&OnPress_Hook);
-    if (!oOnPress) {
-      shellui_log("Failed to detour Func Set3");
+    if (!game_options_service_current) {
+      oOnPress = (int( * )(MonoObject * , MonoObject * , MonoObject * )) DetourFunction(Get_Address_of_Method(leg_img, UI3_dec.c_str(), SettingsPage_dec.c_str(), onpressed_method.c_str(), 2), (void * )&OnPress_Hook);
+      if (!oOnPress) {
+        shellui_log("Failed to detour Func Set3");
+      }
+
+      boot_orig = (bool( * )(MonoString * , int, MonoString * )) DetourFunction(Get_Address_of_Method(AppSystem_img, appsystem_namespace.c_str(), boot_helper.c_str(), boot_method.c_str(), 3), (void * )&uri_boot_hook);
+      if (!boot_orig) {
+        boot_orig_2 = (bool( * )(MonoString * , int)) DetourFunction(Get_Address_of_Method(AppSystem_img, appsystem_namespace.c_str(), boot_helper.c_str(), boot_method.c_str(), 2), (void * )&uri_boot_hook_2);
+        if (!boot_orig_2) {
+          notify("failed to detour Func Set4");
+        }
+      }
+    } else {
+      shellui_log("PIZZA HEN R7.6: native Cheats OnPress/Boot already owned by lazy Shell service");
     }
 
-    boot_orig = (bool( * )(MonoString * , int, MonoString * )) DetourFunction(Get_Address_of_Method(AppSystem_img, appsystem_namespace.c_str(), boot_helper.c_str(), boot_method.c_str(), 3), (void * )&uri_boot_hook);
-    if (!boot_orig) {
-      boot_orig_2 = (bool( * )(MonoString * , int)) DetourFunction(Get_Address_of_Method(AppSystem_img, appsystem_namespace.c_str(), boot_helper.c_str(), boot_method.c_str(), 2), (void * )&uri_boot_hook_2);
-      if (!boot_orig_2) {
-        notify("failed to detour Func Set4");
+    // OnionHEN 0.0.10: Settings-internal navigation can bypass BootHelper on
+    // 11.6+/12.x. These two hooks are optional but together prevent Sony's
+    // RN DebugSettingsScreen from becoming the host for PIZZA Debug Services.
+    {
+      const uint64_t nav_addr = Get_Address_of_Method(
+          REACTPUI_img, "ReactNative.Views.UI3.View",
+          "ReactNavigatorManager", "UpdateNavigationState", 1);
+      if (nav_addr) {
+        ReactNavigatorManager_UpdateNavigationState_Orig =
+            (void(*)(MonoObject*, MonoObject*))DetourFunction(
+                nav_addr, (void*)&ReactNavigatorManager_UpdateNavigationState_Hook);
+        shellui_log("PIZZA HEN Onion nav UpdateNavigationState hook: %s",
+                    ReactNavigatorManager_UpdateNavigationState_Orig ? "ready" : "detour-failed");
+      } else {
+        shellui_log("PIZZA HEN Onion nav UpdateNavigationState: method unavailable");
+      }
+
+      const uint64_t getmodel_addr = Get_Address_of_Method(
+          ReactNativeShellAppReactNativeShellApp_img,
+          "ReactNative.Modules.ShellUI.Settings",
+          "DebugSettingsModule", "GetModel", 2);
+      if (getmodel_addr) {
+        DebugSettings_GetModel_Orig =
+            (void(*)(MonoObject*, MonoObject*, MonoObject*))DetourFunction(
+                getmodel_addr, (void*)&DebugSettings_GetModel_Hook);
+        shellui_log("PIZZA HEN Onion nav DebugSettings.GetModel hook: %s",
+                    DebugSettings_GetModel_Orig ? "ready" : "detour-failed");
+      } else {
+        shellui_log("PIZZA HEN Onion nav DebugSettings.GetModel: method unavailable");
       }
     }
 
@@ -1202,9 +1555,13 @@ int main(int argc, char const *argv[]) {
       notify("Failed to detour Func Set6");
     }
 
-    oOnPreCreate = (int( * )(MonoObject * , MonoObject * )) DetourFunction(Get_Address_of_Method(leg_img, UI3_dec.c_str(), SettingsPage_dec.c_str(), oncreating_method.c_str(), 1), (void * )&OnPreCreate_Hook);
-    if (!oOnPreCreate) {
-      notify("Failed to detour Func Set7");
+    if (!game_options_service_current) {
+      oOnPreCreate = (int( * )(MonoObject * , MonoObject * )) DetourFunction(Get_Address_of_Method(leg_img, UI3_dec.c_str(), SettingsPage_dec.c_str(), oncreating_method.c_str(), 1), (void * )&OnPreCreate_Hook);
+      if (!oOnPreCreate) {
+        notify("Failed to detour Func Set7");
+      }
+    } else {
+      shellui_log("PIZZA HEN R7.6: native Cheats OnCreating already owned by lazy Shell service");
     }
 
     oGetString = (MonoString * ( * )(MonoObject * , MonoString * )) DetourFunction(Get_Address_of_Method(leg_img, UI3_dec.c_str(), SettingsPlugin_dec.c_str(), getstring_method.c_str(), 1), (void * )&GetString_Hook);
@@ -1213,9 +1570,13 @@ int main(int argc, char const *argv[]) {
       return -1;
     }
 
-    GetManifestResourceStream_Original = (uint64_t( * )(uint64_t, MonoString * ))(DetourFunction(method, (void * ) & GetManifestResourceStream_Hook));
-    if (!GetManifestResourceStream_Original) {
-      notify("Failed to detour Func Set9");
+    if (!game_options_service_current) {
+      GetManifestResourceStream_Original = (uint64_t( * )(uint64_t, MonoString * ))(DetourFunction(method, (void * ) & GetManifestResourceStream_Hook));
+      if (!GetManifestResourceStream_Original) {
+        notify("Failed to detour Func Set9");
+      }
+    } else {
+      shellui_log("PIZZA HEN R7.6: native Cheats manifest hook already owned by lazy Shell service");
     }
 
     shellui_log("Performing Magic ....");
@@ -1251,6 +1612,7 @@ int main(int argc, char const *argv[]) {
     // shellui_log("Decrypted Data: %s", dec_xml_str.c_str());
     shellui_log("Performed Magic");
 
+    shellui_hooks_publish_ready();
     hooked = true;
     pthread_t thread_id;
     scePthreadCreate(&thread_id, nullptr, dialogue_thread, nullptr, "dialogue_thread");

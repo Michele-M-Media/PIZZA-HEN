@@ -1,0 +1,20 @@
+PIZZA HEN R7.3 — CHEATS SERVICE + TOOLBOX CLEANUP
+
+BASE: R7.2 hardware-PASS reported by Michele on 2026-08-18.
+
+CHEATS SERVICE
+- Does NOT restore the R6 full boot-time ShellUI preload.
+- Uses the FIX70.37 Shell Service pattern, narrowed to the exact OptionMenu/createJson hook used by ★ PIZZA HEN Cheats.
+- Starts once from the daemon when PIZZA HEN starts.
+- Uses mode/online/PID markers to avoid stale-service reuse.
+- Consumes toolbox_online after the service handshake so the separate Debug Services v0.1 injection must wait for its own fresh handshake.
+- When Debug Services is opened later, the full v0.1 path skips only a second createJson detour; all other Debug Services hooks remain in their original path.
+
+TOOLBOX UI
+- Game Manager: hidden only. Panel, JS and backend routes remain present.
+- Debug Services: removed only as a Toolbox link. The separate Media Debug Services launcher remains present.
+- Removed from modern Toolbox UI: System Options, Rest Mode Options, Extras / Firmware Backends, Controller Shortcuts, PS5 webMAN Games, Homebrew Store.
+- Underlying daemon/util functions are not deleted by this UI cleanup.
+
+IMPORTANT
+R7.3 is source/static validated only. R7.2 is the hardware-PASS base; the new resident Game Options service still requires hardware validation.

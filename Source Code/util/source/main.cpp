@@ -170,7 +170,7 @@ bool sceKernelIsTestKit() {
 bool patchShellCoreTEST();
   
 int main(void) {
-    pthread_t ipc_server = 0, cheat_cache = 0;//, j_ftp = 0;
+    pthread_t ipc_server = 0;//, j_ftp = 0;
     char tmp_buf[200];
     
     sceNetCtlInit();
@@ -217,8 +217,10 @@ int main(void) {
     }
     if (global_conf.allow_data) {
         etaHEN_log("Allowing data in sandbox");
-        patchShellCore();
-        etaHEN_log("Patched shellcore");
+        if (patchShellCore())
+            etaHEN_log("Patched shellcore");
+        else
+            etaHEN_log("ShellCore /data patch unavailable for this firmware/capability; runtime resolver remains active");
     }
 
 
@@ -287,8 +289,9 @@ int main(void) {
         LoadSettings();
         etaHEN_log("done loading settings...");
 
-        etaHEN_log("Caching cheat list...");
-        pthread_create(&cheat_cache, NULL, MakeInitialCheatCache, NULL);
+        // PIZZA HEN v1.0: legacy CheatManager runtime retired.
+        // CheatRunner v0.17 owns cheat discovery/cache/attach state on demand from Toolbox.
+        etaHEN_log("Legacy PIZZA cheat cache disabled; CheatRunner is active backend");
 
         if (global_conf.discord_rpc)
             pthread_join(discordRpcServerThread, NULL);

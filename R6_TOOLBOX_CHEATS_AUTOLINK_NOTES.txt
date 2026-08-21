@@ -1,0 +1,25 @@
+PIZZA HEN R6 — TOOLBOX CHEATS AUTOLINK
+
+Goal
+- ★ PIZZA HEN Cheats / PIZZA HEN Game Options must be available after PIZZA HEN starts.
+- It must belong to the PIZZA HEN Toolbox runtime, not depend on opening Debug Services first.
+
+Source-grounded change
+- daemon/source/main.cpp: in Media Toolbox mode, starts cmd_preload_toolbox_hooks().
+- daemon/source/msg.cpp: cmd_preload_toolbox_hooks() reuses the v0.1 Inject_Toolbox + /system_tmp/toolbox_online handshake.
+- It intentionally does NOT call ItemzLaunchByUri and therefore does not itself open Debug Services.
+- It records the existing /system_tmp/pizzahen_shellui_preloaded + resident PID state so the later Debug Services tile reuses the already-resident ShellUI payload.
+
+Frozen from R5
+- shellui/src/HookFunctions.cpp (including MENU_ID_CHEATS -> ★ PIZZA HEN Cheats)
+- Debug Services XML/UI cleanup
+- PZHN00001 Toolbox and PZHN00002 Debug Services dual Media tiles
+- v0.1 pizzahen-toolbox-open.elf source
+- Onion debug-settings route policy
+- KStuff Lite 1.10 / DR 1.2 selector
+- Itemflow/ITEM00001 handler
+
+Validation
+- R6 dedicated static test: 19/19 PASS.
+- Current branch active static suite: PASS.
+- Hardware status: NOT TESTED until user test.

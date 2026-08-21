@@ -103,12 +103,9 @@ class FdTbl {
 
 class KProc : public KernelObject<KProc, PROC_SIZE> {
 
-	static constexpr size_t UCRED_OFFSET = 0x40;
 	static constexpr size_t PATH_OFFSET = 0x3d8;
 	static constexpr size_t SHARED_OBJECT_OFFSET = 0x3e8;
-	static constexpr size_t PID_OFFSET = 0xbc;
 	static constexpr size_t THREADS_OFFSET = 0x10;
-	static constexpr size_t FD_OFFSET = 0x48;
 	static constexpr size_t TITLEID_OFFSET = 0x470;
 	static constexpr size_t SELFINFO_OFFSET = 0x588;
 	static constexpr size_t SELFINFO_NAME_OFFSET = 0x59C;
@@ -117,7 +114,7 @@ class KProc : public KernelObject<KProc, PROC_SIZE> {
 
 		KProc(uintptr_t addr) : KernelObject(addr) {}
 		uintptr_t p_ucred() const {
-			return get<uintptr_t, UCRED_OFFSET>();
+			return kread<uintptr_t>(address() + offsets::proc_p_ucred());
 		}
 
 		UniquePtr<KUcred> ucred() const {
@@ -125,7 +122,7 @@ class KProc : public KernelObject<KProc, PROC_SIZE> {
 		}
 
 		int p_pid() const {
-			return get<int, PID_OFFSET>();
+			return kread<int>(address() + offsets::proc_p_pid());
 		}
 
 		int pid() const {
@@ -159,7 +156,7 @@ class KProc : public KernelObject<KProc, PROC_SIZE> {
 		}
 
 		uintptr_t p_fd() const {
-			return get<uintptr_t, FD_OFFSET>();
+			return kread<uintptr_t>(address() + offsets::proc_p_fd());
 		}
 
 		FdTbl getFdTbl() const {
@@ -196,7 +193,11 @@ class KProc : public KernelObject<KProc, PROC_SIZE> {
 };
 
 inline KIterator<KProc> getAllProcs() {
-	return {kernel_base + offsets::allproc()};
+	const size_t allproc_offset = offsets::allproc();
+	if (kernel_base == 0 || !offsets::available(allproc_offset)) [[unlikely]] {
+		return {0};
+	}
+	return {kernel_base + allproc_offset};
 }
 
 UniquePtr<KProc> getProc(int pid);

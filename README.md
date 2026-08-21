@@ -1,33 +1,59 @@
-# 🍕 PIZZA HEN
+# 🍕 PIZZA HEN v1.0
 
-**PIZZA HEN** is an experimental all-in-one PS5 homebrew environment maintained by **Michele Media**.
+**PIZZA HEN** is an all-in-one PS5 homebrew environment maintained by **Michele Media**.
 
-This project started from the GPLv3 etaHEN 2.5B source base and has been extensively reworked around a PIZZA HEN runtime, UI, service chain, Multi-SDK build policy, KStuff selector, frozen ShadowMount integration, Toolbox, Game Manager integration, cheats, plugin management, FTP, and debugging services.
+This public v1.0 checkpoint is based on the hardware-tested PIZZA HEN line with the Multi-SDK runtime, KStuff selector, ShadowMount integration, PIZZA HEN Toolbox, CheatRunner 0.17, DPIv2, FTP, ps5debug-NG, package-install support, multilingual UI and multi-firmware routing.
 
-> **Status:** v0.1 / pre-release  
-> Some components are experimental, especially the App Plugin Manager lifecycle introduced from observed etaHEN 2.6B behavior.
+## Release status
+
+**v1.0 — public release checkpoint**
+
+Hardware validation for the DPIv2 12.x path is confirmed on **firmware 12.20 through 12.70**. The Game Options CheatRunner shortcut contained in this checkpoint should be treated as **experimental** and is not required for the main PIZZA HEN feature set.
 
 ## Highlights
 
-- PIZZA HEN Toolbox available from a PS5 Media tile.
-- Graphical boot selector:
-  - KStuff Lite 1.09 — Modern Mode
-  - KStuff DR 1.2 — Compatibility Mode
-- Exactly one KStuff engine per boot session.
-- ShadowMountPlus 1.6beta16 kept as a frozen/pristine upstream runtime asset.
-- Automatic FTP service.
-- Automatic ps5debug-NG service.
-- Direct Game Manager integration with Itemzflow when `ITEM00001` is installed.
-- Unified cheat repository support.
-- Game Overlay GPU / CPU / RAM sections disabled by default.
-- PIZZA HEN App Plugin Manager (beta) with `[DEFAULT]`, per-title sections, `?autoload`, runtime session state and persistent configuration.
-- Capability-based Multi-SDK build discovery.
+- PIZZA HEN Toolbox from the PS5 Media area.
+- Graphical KStuff selector:
+  - KStuff Lite 1.10
+  - KStuff DR 1.2
+- One KStuff engine per boot session.
+- ShadowMountPlus 1.6beta16 preserved as the frozen upstream runtime baseline.
+- CheatRunner 0.17 integrated in the Toolbox.
+- DPIv2 package-install path with the 12.20+ MetaInfo repair.
+- Automatic FTP and ps5debug-NG service chain.
+- Multi-language UI following the PS5 system locale.
+- Multi-SDK / capability-based build discovery.
+- Multi-firmware ShellCore / Debug Services routing derived from the project's Onion/etaHEN compatibility work.
+
+## DPIv2 firmware validation
+
+The v1.0 release checkpoint includes the DPIv2 12.x repair based on the etaHEN 2.6B call shape for firmware 12.20+.
+
+**Hardware-confirmed range for this path: 12.20 → 12.70.**
+
+See [`DPIV2_12X_ETAHEN26B_METAINFO_REPAIR.md`](DPIV2_12X_ETAHEN26B_METAINFO_REPAIR.md).
+
+## Build
+
+### Windows + WSL
+
+For the exact public v1.0 checkpoint, run:
+
+```text
+RUN_BUILD_R713_CHEATRUNNER_GAME_OPTIONS_SHORTCUT.bat
+```
+
+### Linux / WSL
+
+```bash
+./RUN_BUILD_PIZZA_HEN.sh
+```
+
+The build system performs SDK discovery and regression gates before compiling.
 
 ## Multi-SDK policy
 
-PIZZA HEN must not require one named Payload SDK release.
-
-Supported discovery aliases:
+PIZZA HEN does not require one hard-coded Payload SDK release. Supported discovery aliases include:
 
 ```text
 PIZZA_HEN_SDK
@@ -36,7 +62,7 @@ PS5SDK
 PAYLOAD_SDK
 ```
 
-Future/alternate toolchains can be selected with:
+Optional overrides:
 
 ```text
 PIZZA_HEN_TOOLCHAIN_FILE=/absolute/path/to/toolchain.cmake
@@ -45,83 +71,35 @@ PIZZA_HEN_CMAKE_WRAPPER=/absolute/path/to/sdk-cmake-wrapper
 
 See [`SDK_COMPATIBILITY.txt`](SDK_COMPATIBILITY.txt).
 
-## Build
+## CheatRunner 0.17
 
-### Windows + WSL
+The legacy cheat route has been replaced by the vendored CheatRunner v0.17 backend. The Toolbox can start CheatRunner on demand, use its local dashboard/API on port 9999 and deep-link the active Title ID when available.
 
-Run:
-
-```text
-RUN_BUILD_PIZZA_HEN_v0.1.bat
-```
-
-### Linux / WSL / compatible host
-
-```bash
-./RUN_BUILD_PIZZA_HEN.sh
-```
-
-The build scripts perform SDK capability discovery and static regression gates before compiling.
-
-## Runtime chain
-
-```text
-PIZZA-HEN
-  -> local web selector
-  -> KStuff Lite 1.09 OR KStuff DR 1.2
-  -> ShadowMountPlus
-  -> FTP
-  -> ps5debug-NG
-  -> PIZZA HEN runtime / Toolbox
-```
-
-## Game Manager
-
-PIZZA HEN does **not** redistribute Itemzflow in this repository.
-
-When Itemzflow is installed with title ID `ITEM00001`, the PIZZA HEN Toolbox can launch it directly as the Game Manager.
-
-## App Plugin Manager
-
-The current App Plugin Manager is **beta**.
-
-Its configuration is stored under:
-
-```text
-/data/PIZZA_HEN/plugins/apps/plugins.ini
-```
-
-Example:
-
-```ini
-[DEFAULT]
-/data/PIZZA_HEN/plugins/apps/global.sprx?autoload
-
-[PPSA00001]
-/data/PIZZA_HEN/plugins/apps/example.sprx?autoload
-```
-
-Disabling autoload prevents future automatic loads. A plugin already loaded inside an application is not forcibly hot-unloaded by the current beta implementation.
+See [`CHEATRUNNER_INTEGRATION.md`](CHEATRUNNER_INTEGRATION.md).
 
 ## Project data
 
-Primary data root:
+Primary runtime root:
 
 ```text
 /data/PIZZA_HEN
 ```
 
-## License and upstream work
+## Third-party work and license
 
-PIZZA HEN is distributed under the **GNU GPLv3** where applicable to the GPL-covered source base.
+PIZZA HEN derives from and integrates multiple open-source PS5 projects. Upstream authorship and licensing remain intact.
 
-This project incorporates, derives from, integrates with, or preserves work from multiple open-source PS5 projects. Their authorship and licenses are not replaced by PIZZA HEN branding.
+GPL-covered inherited/modified source remains under **GNU GPLv3**. Independently licensed components retain their own licenses.
 
-See [`CREDITS.md`](CREDITS.md), [`THIRD_PARTY.md`](THIRD_PARTY.md), and [`LICENSE`](LICENSE).
+See:
 
-## Warning
+- [`LICENSE`](LICENSE)
+- [`CREDITS.md`](CREDITS.md)
+- [`THIRD_PARTY.md`](THIRD_PARTY.md)
 
-This is experimental homebrew software. Use it only on hardware and software you are authorized to modify. Keep backups of important data.
+## Safety / usage
+
+Use this software only on hardware and software you are authorized to modify. Keep backups of important data. This project is provided without warranty.
 
 ---
 

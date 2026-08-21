@@ -1,25 +1,29 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <system_settings version="1.0" plugin="debug_settings_plugin">
 
-  <!-- ★ PIZZA HEN Toolbox -->
-  <setting_list id="id_debug_settings" title="★ PIZZA HEN Toolbox" initial_focus_to="id_game_package_installer">
-    <!-- PIZZA HEN Game Manager: direct integration with the installed ITEM00001 backend. -->
+  <!-- ★ PIZZA HEN Debug Services -->
+  <setting_list id="id_debug_settings" title="★ PIZZA HEN Debug Services" initial_focus_to="id_game_package_installer">
+    <!-- PIZZA HEN R4: Game Manager UI intentionally hidden.
+         The original ITEM00001-linked XML is preserved verbatim below so the
+         backend/handler integration is not deleted.
+    PIZZA_HEN_HIDDEN_GAME_MANAGER_BEGIN
     <setting_list id="id_game_manager" title="★ Game Manager" initial_focus_to="id_open_game_manager">
       <button id="id_open_game_manager" title="Open Game Manager" second_title="Opens the integrated game library and management environment"/>
       <label id="id_game_manager_backend" title="Backend: ITEM00001 compatibility layer" style="center"/>
       <label id="id_game_manager_owner" title="PIZZA HEN Game Manager integration by Michele Media" style="center"/>
     </setting_list>
+    PIZZA_HEN_HIDDEN_GAME_MANAGER_END -->
 
     <!-- PKG Installer -->
     <link id="id_game_package_installer" title="Package Installer" file="PkgInstaller/data/pkginstaller.xml"/>
 
     <link id="id_game_custom_package_installer" title="★ Custom Background Package Installer" file="custompkginstaller.xml"/>
      
-    <!-- Plugins -->
+    <!-- PIZZA HEN R4 UI cleanup: these legacy top-level rows are hidden.
+         Their backend files are deliberately retained; only the Debug Services
+         surface is cleaned up.
     <link id="id_plugins" title="Plugins / Payload ELFs" file="plugins.xml"/>
-
-    <!-- Cheats -->
-    <link id="id_cheats" title="Cheats — Unified Repository" file="cheats.xml"/>
+    -->
 
     <!-- Remote Play PIN -->
     <link id="remote_play" title="Remote Play" file="remote_play.xml"/>
@@ -35,47 +39,10 @@
       <label id="id_elfldr_status" title="ELF loader / plugin infrastructure: TCP 9021" style="center"/>
     </setting_list>
     <!-- Settings -->
-        <setting_list id="id_utils" title="Settings" initial_focus_to="id_overlay_opts">
-          <!-- Overlay menu -->
-        <setting_list id="id_overlay_opts" title="Game Overlay Menu" initial_focus_to="id_overlay_change_pos">
-           <list id="id_overlay_change_pos" title="Overlay Position" second_title="Change the position of the overlay on screen" >
-             <list_item id="id_overlay_pos_1" title="Top Left" value="0"/>
-             <list_item id="id_overlay_pos_2" title="Top Right" value="1"/>
-             <list_item id="id_overlay_pos_3" title="Bottom Left" value="2"/>
-             <list_item id="id_overlay_pos_4" title="Bottom Right" value="3"/>
-           </list>
-           <toggle_switch id="id_overlay_fps" title="FPS Section (PS4 / PS5)" description="Toggle the FPS counter section from the game overlay. Disabled by default." value="0"/> 
-           <toggle_switch id="id_overlay_gpu" title="GPU Section" description="Toggle the GPU Section from the game overlay" value="0"/>
-           <toggle_switch id="id_overlay_cpu" title="CPU Section" description="Toggle the CPU Section from the game overlay" value="0"/>
-           <toggle_switch id="id_all_cpu_usage" title="Show ALL CPU Core Usage" description="Toggle the advanced CPU usage from the game overlay" value="0"/>
-           <toggle_switch id="id_overlay_ram" title="RAM Section" description="Toggle the RAM Section from the game overlay" value="0"/>
-           <toggle_switch id="id_overlay_ip" title="IP Address Section" description="Toggle the IP Section from the game overlay" value="0"/>
-           <toggle_switch id="id_overlay_kstuff" title="Kstuff is Disabled Warning Overlay" description="Replaces the Kstuff is disabled notification with Red on-screen warning text | NOTE: NOT affected by overlay position setting" value="0"/>
-        </setting_list>
+        <setting_list id="id_utils" title="Settings" initial_focus_to="id_disp_titleids">
+          <!-- PIZZA HEN R5: Game Overlay, Kstuff Control and legacy manual fan UI removed from Debug Services.
+               Backend/runtime implementations remain untouched. -->
 
-          <!-- Kstuff menu -->
-        <setting_list id="id_kstuff_opts" title="Kstuff Control — Normal Test Baseline" initial_focus_to="id_pause_kstuff">
-
-            <list id="id_pause_kstuff" title="Pause Kstuff" second_title="Pausing kstuff will greatly improve overrall system performance but FPKGs will NOT work" confirm="PS4 FPKGs, PS5 FGs and any FPKG Homebrew apps will NOT work once paused depending on the option selected" confirm_phrase="OK, Cancel" >
-              <list_item id="id_pause_kstuff_1" title="Not Paused" value="0"/>
-              <list_item id="id_pause_kstuff_2" title="PS5 sysentvec Only" value="1"/>
-              <list_item id="id_pause_kstuff_3" title="PS4 sysentvec Only" value="2"/>
-              <list_item id="id_pause_kstuff_4" title="Pause Both PS5 and PS4 sysentvecs" value="3"/>
-            </list>
-            <toggle_switch id="id_pause_kstuff_on_open" title="Pause Kstuff on Game Launch" description="This will pause Kstuff when launching games or apps after the provided delay" value="0"/>
-             <text_field id="id_pause_kstuff_on_open_secs" title="Kstuff pause delay" second_title="Delay in seconds used for auto pausing kstuff after app launch" keyboard_type="number" min_length="1" max_length="3"/>
-            <toggle_switch id="id_enable_kstuff_on_close" title="Unpause Kstuff on Game Close" description="This will unpause Kstuff when closing games or apps, Note: if not paused no action will be taken" value="0"/>
-            <button id="id_download_kstuff" title="Install normal Kstuff Lite v1.09 test baseline" description="Downloads the official Kstuff Lite v1.09 from EchoStretch's repository to /data/PIZZA_HEN/kstuff.elf, will replace the normal baseline PIZZA HEN loads on startup"/>
-            <button id="id_delete_kstuff" title="Remove external Kstuff test baseline" description="This will switch back to the embedded compatibility fallback"/>
-            <toggle_switch id="id_kstuff_autoload" title="Auto load Kstuff on PIZZA HEN startup"  value="0"/>
-
-       </setting_list>
-
-
-      <toggle_switch id="id_enable_fan_speed" title="Enable Manual Fan Speed Threshold"  value="0"/>
-
-      <text_field id="id_fan_speed" title="Adjust Fan Threshold" second_title="Adjust Fan Threshold in celsius" keyboard_type="number" min_length="2" max_length="2"/>
-      
       <toggle_switch id="id_disp_titleids" title="Display Title ID on Home Menu" second_title="Works on retail but will only show with the toolbox active" value="0"/>
 
       <toggle_switch id="id_custom_game_opts" title="PIZZA HEN Game Options" second_title="Toggle the PIZZA HEN options in the Game Options menu" value="1"/>
@@ -94,10 +61,10 @@
 
             <!-- Rest mode options -->
       <setting_list id="id_rest_mode" title="★ Rest Mode Options" second_title="Useful options focused at improving Rest Mode Stability" initial_focus_to="id_rest_1">
-        <text_field id="id_rest_1" title="Delay Toolbox activation (seconds)" second_title="Delays patching in the toolbox to prevent freezing (in Addition to the already builtin delay)" keyboard_type="number" min_length="1" max_length="255"/>
+        <text_field id="id_rest_1" title="Delay Debug Services activation (seconds)" second_title="Delays patching in the toolbox to prevent freezing (in Addition to the already builtin delay)" keyboard_type="number" min_length="1" max_length="255"/>
         <toggle_switch id="id_rest_2" title="Automatically kill the PIZZA HEN services daemon when entering rest mode"  second_title="The daemon will be restarted after coming from rest mode" value="0"/>
         <toggle_switch id="id_rest_3" title="Automatically close open games when entering rest mode" second_title="Attempts to close any open game or Itemzflow when going into rest mode" value="0"/>
-        <toggle_switch id="id_rest_4" title="Disable Toolbox auto start when entering rest mode" second_title="This setting will disable toolbox auto start the next time you enter rest mode" value="0"/>
+        <toggle_switch id="id_rest_4" title="Disable Debug Services auto start when entering rest mode" second_title="This setting will disable toolbox auto start the next time you enter rest mode" value="0"/>
       </setting_list>
 
       <!-- Debug setting extra 2 -->
@@ -125,41 +92,8 @@
       
     </setting_list>
 
-    <!-- Controller Shortcuts -->
-    <setting_list id="id_shortcuts" title="Controller Shortcuts" second_title="Shortcuts will persist upon reboots (if the toolbox is active), combos are not limited to in-game" initial_focus_to="id_cheats_shortcut">
-       <list id="id_cheats_shortcut" title="Open Cheats Menu" second_title="Set a controller shortcut to open the Cheats menu from anywhere (i.e in-game)"  >
-       <list_item id="id_cheats_shortcut_0" title="OFF (No shortcut)" value="0"/>
-       <list_item id="id_cheats_shortcut_1" title="Hold R3 + L3" value="1"/>
-       <list_item id="id_cheats_shortcut_2" title="Hold L2 + △" value="2"/>
-       <list_item id="id_cheats_shortcut_3" title="Long Hold Options button" value="3"/>
-       <list_item id="id_cheats_shortcut_4" title="Long Hold Share button" value="4"/>
-       <list_item id="id_cheats_shortcut_5" title="Single Tap Share button" value="5"/>
-      </list>
-
-      <list id="id_toolbox_shortcut" title="Open the PIZZA HEN Toolbox" second_title="Set a controller shortcut to Open the PIZZA HEN Toolbox Menu from anywhere (i.e in-game)"  >
-       <list_item id="id_toolbox_shortcut_0" title="OFF (No shortcut)" value="0"/>
-       <list_item id="id_toolbox_shortcut_1" title="Hold L2 + R3" value="1"/>
-       <list_item id="id_toolbox_shortcut_2" title="Long Hold Share button" value="2"/>
-       <list_item id="id_toolbox_shortcut_3" title="Single Tap Share button" value="3"/>
-      </list>
-
-      <list id="id_games_shortcut" title="Open the PIZZA HEN Game Library" second_title="Set a controller shortcut to open the PIZZA HEN Game Library from anywhere (i.e in-game)"  >
-       <list_item id="id_games_shortcut_0" title="OFF (No shortcut)" value="0"/>
-       <list_item id="id_games_shortcut_1" title="Hold R1 + L1" value="1"/>
-       <list_item id="id_games_shortcut_2" title="Hold L2 + Circle" value="2"/>
-       <list_item id="id_games_shortcut_3" title="Long Hold Share button" value="3"/>
-       <list_item id="id_games_shortcut_4" title="Single Tap Share button" value="4"/>
-      </list>
-
-      <list id="id_kstuff_shortcut" title="Toggle Kstuff" second_title="Set a controller shortcut to toggle kstuff off/on from anywhere (i.e in-game)"  >
-       <list_item id="id_kstuff_shortcut_0" title="OFF (No shortcut)" value="0"/>
-       <list_item id="id_kstuff_shortcut_1" title="Hold R2 + L2" value="1"/>
-       <list_item id="id_kstuff_shortcut_2" title="Hold L2 + Square" value="2"/>
-       <list_item id="id_kstuff_shortcut_3" title="Long Hold Share button" value="3"/>
-       <list_item id="id_kstuff_shortcut_4" title="Single Tap Share button" value="4"/>
-      </list>
-
-    </setting_list>
+    <!-- PIZZA HEN R5: Controller Shortcuts UI removed from Debug Services.
+         Shortcut backend code remains untouched. -->
 
     <link id="id_ps5_backups" title="(Beta) PS5 webMAN Games" second_title="Games must be in either /data/PIZZA_HEN/games and/or PIZZA_HEN/games on USB root" icon="//user//data//PIZZA_HEN//assets//webMAN.png" file="hb_loader.xml"/>
 
@@ -170,11 +104,11 @@
         <list_item id="id_start_opt_1" title="None" value="0"/>
        <list_item id="id_start_opt_1" title="Home Menu" value="1"/>
        <list_item id="id_start_opt_2" title="Settings" value="2"/>    <!-- Credtis -->
-       <list_item id="id_start_opt_3" title="PIZZA HEN Toolbox" value="3"/>
+       <list_item id="id_start_opt_3" title="PIZZA HEN Debug Services" value="3"/>
         <list_item id="id_start_opt_4" title="Game Manager (if installed)" value="4"/>
       </list>
 
-    <toggle_switch id="id_toolbox_auto_start" title="PIZZA HEN Toolbox on Startup" second_title="Toggle toolbox Startup" confirm="If disabled you will have to either re-add the toolbox or change the Startup setting via Itemzflow's settings menu manually, this will NOT disable any auto start plugins or the Media tile" value="0"/>
+    <toggle_switch id="id_toolbox_auto_start" title="PIZZA HEN Debug Services on Startup" second_title="Toggle Debug Services Startup" confirm="If disabled you will have to either re-add Debug Services or change the Startup setting via Itemzflow's settings menu manually, this will NOT disable any auto start plugins or the Media tile" value="0"/>
 
 
        <!-- Credtis -->
@@ -198,7 +132,7 @@
     <setting_list id="id_pizzahen_about" title="About PIZZA HEN">
       <label id="id_ph_about_1" title="PIZZA HEN v0.1 - Italian Homebrew Environment" style="center"/>
       <label id="id_ph_about_2" title="Project direction and branding: Michele Media" style="center"/>
-      <label id="id_ph_about_3" title="PIZZA HEN Toolbox - native PS5 homebrew control center" style="center"/>
+      <label id="id_ph_about_3" title="PIZZA HEN Debug Services - native PS5 service control center" style="center"/>
       <label id="id_ph_recipe_title" title="★ Pizza Margherita Recipe ★" style="center"/>
       <label id="id_ph_recipe_1" title="Impasto: 500 g farina 00, 325 ml acqua, 2 g lievito, 10 g sale" style="center"/>
       <label id="id_ph_recipe_2" title="Condimento: pomodoro, fior di latte, basilico, olio EVO" style="center"/>

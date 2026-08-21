@@ -41,6 +41,7 @@ along with this program; see the file COPYING. If not, see
 #include "globalconf.hpp"
 #include "launcher.hpp"
 #include "ipc.hpp"
+#include "../include/onion/debug_settings_route_policy.hpp"
 
 #define MSG_NOSIGNAL 0x20000 /* do not generate SIGPIPE on EOF. */
 pthread_t cheat_thr = nullptr;
@@ -108,6 +109,28 @@ extern "C" {
     // External data
     extern uint8_t ps5debug_start[];
     extern const unsigned int ps5debug_size;
+    extern uint8_t pizzahen_kstuff_toggle_1_start[];
+    extern const unsigned int pizzahen_kstuff_toggle_1_size;
+    extern uint8_t pizzahen_kstuff_toggle_2_start[];
+    extern const unsigned int pizzahen_kstuff_toggle_2_size;
+    extern uint8_t pizzahen_kstuff_toggle_3_start[];
+    extern const unsigned int pizzahen_kstuff_toggle_3_size;
+    extern uint8_t pizzahen_klogsrv_start[];
+    extern const unsigned int pizzahen_klogsrv_size;
+    extern uint8_t pizzahen_fan_target_65c_start[];
+    extern const unsigned int pizzahen_fan_target_65c_size;
+    extern uint8_t pizzahen_fan_target_70c_start[];
+    extern const unsigned int pizzahen_fan_target_70c_size;
+    extern uint8_t pizzahen_fan_target_75c_start[];
+    extern const unsigned int pizzahen_fan_target_75c_size;
+    extern uint8_t pizzahen_fan_target_80c_start[];
+    extern const unsigned int pizzahen_fan_target_80c_size;
+    extern uint8_t pizzahen_fan_target_85c_start[];
+    extern const unsigned int pizzahen_fan_target_85c_size;
+    extern uint8_t pizzahen_cheatrunner_start[];
+    extern const unsigned int pizzahen_cheatrunner_size;
+    extern uint8_t pizzahen_phu_overlay_start[];
+    extern const unsigned int pizzahen_phu_overlay_size;
     int sceNotificationSend(int userId, bool isLogged, const char* payload);
 
 }
@@ -298,7 +321,47 @@ int ItemzLaunchByUri(const char* uri) {
     return sceShellUIUtilLaunchByUri(uri, &Param);
 }
 
+static bool pizzahen_write_embedded_runtime_file(const char *path, const uint8_t *data, size_t size) {
+    if (!path || !data || size < 4 || data[0] != 0x7f || data[1] != 'E' || data[2] != 'L' || data[3] != 'F')
+        return false;
+    int out = open(path, O_WRONLY | O_CREAT | O_TRUNC, 0777);
+    if (out < 0) return false;
+    size_t off = 0;
+    while (off < size) {
+        const ssize_t n = write(out, data + off, size - off);
+        if (n <= 0) { close(out); unlink(path); return false; }
+        off += (size_t)n;
+    }
+    fsync(out);
+    close(out);
+    chmod(path, 0777);
+    return true;
+}
+
+static void pizzahen_install_r74_runtime_assets() {
+    mkdir("/data/PIZZA_HEN", 0777);
+    mkdir("/data/PIZZA_HEN/tools", 0777);
+    mkdir("/data/PIZZA_HEN/payloads", 0777);
+    (void)pizzahen_write_embedded_runtime_file("/data/PIZZA_HEN/tools/kstuff-toggle-1.elf", pizzahen_kstuff_toggle_1_start, pizzahen_kstuff_toggle_1_size);
+    (void)pizzahen_write_embedded_runtime_file("/data/PIZZA_HEN/tools/kstuff-toggle-2.elf", pizzahen_kstuff_toggle_2_start, pizzahen_kstuff_toggle_2_size);
+    (void)pizzahen_write_embedded_runtime_file("/data/PIZZA_HEN/tools/kstuff-toggle-3.elf", pizzahen_kstuff_toggle_3_start, pizzahen_kstuff_toggle_3_size);
+    // User-supplied original PHU overlay is deployed under the existing PIZZA HEN path.
+    // The ELF itself is not patched or reimplemented.
+    (void)pizzahen_write_embedded_runtime_file("/data/PIZZA_HEN/payloads/pizza_overlay.elf", pizzahen_phu_overlay_start, pizzahen_phu_overlay_size);
+    // Restored from FIX70.34 STEP3/STEP4: exact payloads, no reimplementation.
+    (void)pizzahen_write_embedded_runtime_file("/data/PIZZA_HEN/payloads/klogsrv-ps5.elf", pizzahen_klogsrv_start, pizzahen_klogsrv_size);
+    (void)pizzahen_write_embedded_runtime_file("/data/PIZZA_HEN/payloads/fan_target_65c.elf", pizzahen_fan_target_65c_start, pizzahen_fan_target_65c_size);
+    (void)pizzahen_write_embedded_runtime_file("/data/PIZZA_HEN/payloads/fan_target_70c.elf", pizzahen_fan_target_70c_start, pizzahen_fan_target_70c_size);
+    (void)pizzahen_write_embedded_runtime_file("/data/PIZZA_HEN/payloads/fan_target_75c.elf", pizzahen_fan_target_75c_start, pizzahen_fan_target_75c_size);
+    (void)pizzahen_write_embedded_runtime_file("/data/PIZZA_HEN/payloads/fan_target_80c.elf", pizzahen_fan_target_80c_start, pizzahen_fan_target_80c_size);
+    (void)pizzahen_write_embedded_runtime_file("/data/PIZZA_HEN/payloads/fan_target_85c.elf", pizzahen_fan_target_85c_start, pizzahen_fan_target_85c_size);
+    // CheatRunner v0.17 is source-built and deployed as the only active cheat backend.
+    // It is intentionally NOT auto-started: Toolbox starts it on demand.
+    (void)pizzahen_write_embedded_runtime_file("/data/PIZZA_HEN/payloads/CheatRunner.elf", pizzahen_cheatrunner_start, pizzahen_cheatrunner_size);
+}
+
 bool cmd_enable_toolbox();
+bool cmd_ensure_shell_service_runtime();
 void LoadSettings();
 bool is_800 = false;
 int main() {
@@ -340,6 +403,7 @@ int main() {
 
 
     LoadSettings();
+    pizzahen_install_r74_runtime_assets();
 
 #if 0
     // Check if running on a test kit
@@ -372,7 +436,16 @@ int main() {
         etaHEN_log("PIZZA HEN Media Toolbox mode active; boot-time ShellUI injection disabled");
     }
 
-    // Initialize toolbox only when explicitly configured outside Media Toolbox mode.
+    // R7.5.1 HARDWARE-SAFETY ROLLBACK:
+    // R7.2 hardware-PASS did not inject shellui.elf during daemon startup.
+    // R7.3 added an automatic ShellUI service call here, which pauses
+    // the selected KStuff by directly toggling PS5/PS4 sysentvec state and then
+    // injects shellui.elf into ShellUI immediately after the post-selector chain.
+    // Keep the implementation available for a future explicitly gated path, but
+    // do not call it automatically during boot. The modern Toolbox Cheats page
+    // remains available; only the resident Game Options hook is not preloaded.
+    etaHEN_log("PIZZA HEN R7.5.1: startup Game Options ShellUI preload disabled (R7.2 hardware-PASS behavior)");
+
     if (global_conf.toolbox_auto_start) {
         cmd_enable_toolbox();
     }
@@ -387,7 +460,9 @@ int main() {
             notify(true, "Failed to load PS5Debug");
     }
 
-     const char json_payload[] =
+     const auto debug_route = onion::debug_settings_route::DebugSettingsRoutePolicy::for_system_version(sys_ver.version);
+     const char* debug_action_url = debug_route.toolbox_uri(onion::debug_settings_route::UriKind::Simple);
+     std::string json_payload =
      "{\n"
      "  \"rawData\": {\n"
      "    \"viewTemplateType\": \"InteractiveToastTemplateB\",\n"
@@ -404,7 +479,7 @@ int main() {
      "        }\n"
      "      },\n"
      "      \"message\": {\n"
-     "        \"body\": \"PIZZA HEN v0.1 | Michele Media\"\n"
+     "        \"body\": \"PIZZA HEN v1.0 | Michele Media\"\n"
      "      },\n"
      "      \"subMessage\": {\n"
      "        \"body\": \"Italian Homebrew Environment | Game Manager Ready\"\n"
@@ -415,7 +490,7 @@ int main() {
      "          \"actionType\": \"DeepLink\",\n"
      "          \"defaultFocus\": true,\n"
      "          \"parameters\": {\n"
-     "            \"actionUrl\": \"pssettings:play?function=debug_settings\"\n"
+     "            \"actionUrl\": \"" + std::string(debug_action_url) + "\"\n"
      "          }\n"
      "        }\n"
      "      ]\n"
@@ -439,10 +514,10 @@ int main() {
      "  \"createdDateTime\": \"2025-12-14T03:14:51.473Z\",\n"
      "  \"localNotificationId\": \"588193127\"\n"
      "}";
-	sceNotificationSend(0xFE, true, &json_payload[0]);
+	sceNotificationSend(0xFE, true, json_payload.c_str());
 
 
-    etaHEN_log("PIZZA HEN v0.1 startup complete; Game Manager bridge ready");
+    etaHEN_log("PIZZA HEN v1.0 startup complete; Game Manager bridge ready");
 
     // Launch the appropriate app based on configuration
     const char *URI = nullptr;
@@ -452,8 +527,10 @@ int main() {
         break;
     }
     case TOOLBOX: {
-        if (global_conf.toolbox_auto_start)
-            URI = "pssettings:play?mode=settings&function=debug_settings";
+        if (global_conf.toolbox_auto_start) {
+            const auto route = onion::debug_settings_route::DebugSettingsRoutePolicy::for_system_version(sys_ver.version);
+            URI = route.toolbox_uri(onion::debug_settings_route::UriKind::WithMode);
+        }
         else
             URI = "pshomeui:navigateToHome?bootCondition=psButton";
         break;

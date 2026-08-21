@@ -4,6 +4,9 @@
 extern "C" {
 	#include <ps5/kernel.h>
 size_t	 strnlen(const char *, size_t);
+// Weak keeps compatibility with older SDK layouts that do not export the
+// modern direct process resolver.
+intptr_t kernel_get_proc(pid_t pid) __attribute__((weak));
 }
 
 static constexpr size_t BUF_SIZE = 0x10;
@@ -22,6 +25,14 @@ String getKernelString(uintptr_t addr) {
 }
 
 UniquePtr<KProc> getProc(int pid) {
+	if (&kernel_get_proc != nullptr) {
+		const intptr_t proc_addr = kernel_get_proc(pid);
+		if (proc_addr != 0) {
+			return new KProc{static_cast<uintptr_t>(proc_addr)};
+		}
+	}
+
+	// Compatibility path for older SDK layouts.
 	for (auto p : getAllProcs()) {
 		if (pid == p->pid()) {
 			return p.release();

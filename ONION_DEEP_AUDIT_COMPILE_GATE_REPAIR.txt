@@ -1,0 +1,12 @@
+PIZZA HEN v1.0 - Onion Deep Audit compile-gate repair
+
+This repair does not revert the Onion/ShellCore runtime changes.
+It updates the legacy R3 frozen-runtime test so the source files intentionally
+modified by the source-grounded Onion Debug Services and ShellCore multi-firmware
+repair are classified as POST_R3_INTENTIONAL_DELTA instead of byte-frozen.
+
+The WSL build entrypoint now also executes:
+- TESTS/test_onion_shellcore_multifw_repair.py
+- TESTS/test_onion_deep_audit_repair.py
+
+No firmware offsets or runtime patches were added by this compile-gate repair.

@@ -62,6 +62,10 @@ static inline void copyin(uintptr_t kdst, const void *src, size_t length) {
 
 void Hijacker::jailbreak(bool escapeSandbox) const {
 	auto p = getProc();
+	if (p == nullptr) [[unlikely]] {
+		puts("jailbreak skipped: process unavailable");
+		return;
+	}
 	uintptr_t ucred = p->p_ucred();
 	uintptr_t fd = p->p_fd();
 	int uid = -1;
@@ -70,8 +74,13 @@ void Hijacker::jailbreak(bool escapeSandbox) const {
 		puts("already jailbroken");
 		return;
 	}
+	const size_t root_vnode_offset = offsets::root_vnode();
+	if (kernel_base == 0 || !offsets::available(root_vnode_offset)) [[unlikely]] {
+		puts("jailbreak skipped: runtime root_vnode resolver unavailable");
+		return;
+	}
 	UniquePtr<uint8_t[]> rootvnode_area_store{new uint8_t[0x100]};
-	kernel_copyout(kernel_base + offsets::root_vnode(), rootvnode_area_store.get(), 0x100);
+	kernel_copyout(kernel_base + root_vnode_offset, rootvnode_area_store.get(), 0x100);
 	uint32_t uid_store = 0;
 	uint32_t ngroups_store = 0;
 	uint64_t authid_store = 0x4801000000000013l;

@@ -157,6 +157,10 @@ typedef struct
 } CustomPluginHeader;
 
 bool load_plugin(const char *path);
+// FIX70.24: stable PIZZA-owned identity for generic ELF payload processes.
+uint32_t pizzahen_path_hash(const char *path);
+void pizzahen_payload_pid_path(const char *path, char *out, size_t out_size);
+void pizzahen_payload_proc_name(const char *path, char *out, size_t out_size);
 
 /*================== Threads =================*/
 extern pthread_t dpi_thread;

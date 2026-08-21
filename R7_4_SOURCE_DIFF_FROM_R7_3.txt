@@ -1,0 +1,19 @@
+R7.4 SOURCE DIFF INVENTORY FROM R7.3 (build/bin/sxml excluded)
+
+Files /mnt/data/PIZZA-HEN-V01-DUAL-MEDIA-R7.3-CHEATS-SERVICE-TOOLBOX-CLEANUP/Source Code/bootstrapper/assets/toolbox_launcher.html and /mnt/data/PIZZA-HEN-V01-DUAL-MEDIA-R7.4-KSTUFF-TOGGLE-PHU-OVERLAY-PAYLOAD-REPO-V1/Source Code/bootstrapper/assets/toolbox_launcher.html differ
+Only in /mnt/data/PIZZA-HEN-V01-DUAL-MEDIA-R7.4-KSTUFF-TOGGLE-PHU-OVERLAY-PAYLOAD-REPO-V1/Source Code/daemon/assets: kstuff-toggle-1.elf
+Only in /mnt/data/PIZZA-HEN-V01-DUAL-MEDIA-R7.4-KSTUFF-TOGGLE-PHU-OVERLAY-PAYLOAD-REPO-V1/Source Code/daemon/assets: kstuff-toggle-2.elf
+Only in /mnt/data/PIZZA-HEN-V01-DUAL-MEDIA-R7.4-KSTUFF-TOGGLE-PHU-OVERLAY-PAYLOAD-REPO-V1/Source Code/daemon/assets: kstuff-toggle-3.elf
+Only in /mnt/data/PIZZA-HEN-V01-DUAL-MEDIA-R7.4-KSTUFF-TOGGLE-PHU-OVERLAY-PAYLOAD-REPO-V1/Source Code/daemon/assets: pizza_overlay_phu_original.elf
+Files /mnt/data/PIZZA-HEN-V01-DUAL-MEDIA-R7.3-CHEATS-SERVICE-TOOLBOX-CLEANUP/Source Code/daemon/source/embeddded_payloads.c and /mnt/data/PIZZA-HEN-V01-DUAL-MEDIA-R7.4-KSTUFF-TOGGLE-PHU-OVERLAY-PAYLOAD-REPO-V1/Source Code/daemon/source/embeddded_payloads.c differ
+Files /mnt/data/PIZZA-HEN-V01-DUAL-MEDIA-R7.3-CHEATS-SERVICE-TOOLBOX-CLEANUP/Source Code/daemon/source/main.cpp and /mnt/data/PIZZA-HEN-V01-DUAL-MEDIA-R7.4-KSTUFF-TOGGLE-PHU-OVERLAY-PAYLOAD-REPO-V1/Source Code/daemon/source/main.cpp differ
+Files /mnt/data/PIZZA-HEN-V01-DUAL-MEDIA-R7.3-CHEATS-SERVICE-TOOLBOX-CLEANUP/Source Code/include/msg.hpp and /mnt/data/PIZZA-HEN-V01-DUAL-MEDIA-R7.4-KSTUFF-TOGGLE-PHU-OVERLAY-PAYLOAD-REPO-V1/Source Code/include/msg.hpp differ
+Files /mnt/data/PIZZA-HEN-V01-DUAL-MEDIA-R7.3-CHEATS-SERVICE-TOOLBOX-CLEANUP/Source Code/toolbox_api/src/main.c and /mnt/data/PIZZA-HEN-V01-DUAL-MEDIA-R7.4-KSTUFF-TOGGLE-PHU-OVERLAY-PAYLOAD-REPO-V1/Source Code/toolbox_api/src/main.c differ
+Only in /mnt/data/PIZZA-HEN-V01-DUAL-MEDIA-R7.4-KSTUFF-TOGGLE-PHU-OVERLAY-PAYLOAD-REPO-V1/Source Code/util/include: payload_repository.hpp
+Only in /mnt/data/PIZZA-HEN-V01-DUAL-MEDIA-R7.4-KSTUFF-TOGGLE-PHU-OVERLAY-PAYLOAD-REPO-V1/Source Code/util/include: pldmgr_sha256.h
+Files /mnt/data/PIZZA-HEN-V01-DUAL-MEDIA-R7.3-CHEATS-SERVICE-TOOLBOX-CLEANUP/Source Code/util/include/plugin_manager.hpp and /mnt/data/PIZZA-HEN-V01-DUAL-MEDIA-R7.4-KSTUFF-TOGGLE-PHU-OVERLAY-PAYLOAD-REPO-V1/Source Code/util/include/plugin_manager.hpp differ
+Only in /mnt/data/PIZZA-HEN-V01-DUAL-MEDIA-R7.4-KSTUFF-TOGGLE-PHU-OVERLAY-PAYLOAD-REPO-V1/Source Code/util/source: PayloadRepository.cpp
+Files /mnt/data/PIZZA-HEN-V01-DUAL-MEDIA-R7.3-CHEATS-SERVICE-TOOLBOX-CLEANUP/Source Code/util/source/PluginManager.cpp and /mnt/data/PIZZA-HEN-V01-DUAL-MEDIA-R7.4-KSTUFF-TOGGLE-PHU-OVERLAY-PAYLOAD-REPO-V1/Source Code/util/source/PluginManager.cpp differ
+Files /mnt/data/PIZZA-HEN-V01-DUAL-MEDIA-R7.3-CHEATS-SERVICE-TOOLBOX-CLEANUP/Source Code/util/source/main.cpp and /mnt/data/PIZZA-HEN-V01-DUAL-MEDIA-R7.4-KSTUFF-TOGGLE-PHU-OVERLAY-PAYLOAD-REPO-V1/Source Code/util/source/main.cpp differ
+Files /mnt/data/PIZZA-HEN-V01-DUAL-MEDIA-R7.3-CHEATS-SERVICE-TOOLBOX-CLEANUP/Source Code/util/source/msg.cpp and /mnt/data/PIZZA-HEN-V01-DUAL-MEDIA-R7.4-KSTUFF-TOGGLE-PHU-OVERLAY-PAYLOAD-REPO-V1/Source Code/util/source/msg.cpp differ
+Only in /mnt/data/PIZZA-HEN-V01-DUAL-MEDIA-R7.4-KSTUFF-TOGGLE-PHU-OVERLAY-PAYLOAD-REPO-V1/Source Code/util/source: pldmgr_sha256.c

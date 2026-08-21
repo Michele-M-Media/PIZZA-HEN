@@ -50,9 +50,16 @@ add_subdirectory(libNineS)
 add_subdirectory(libelfldr)
 add_subdirectory(shellui)
 add_subdirectory(fps_elf)
+
+# PIZZA HEN v1.0: CheatRunner v0.17 is the sole active cheat backend.
+# Build the vendored upstream source as its own ELF; daemon embeds/deploys it on demand.
+add_subdirectory(third_party/CheatRunner-0.17)
+set_target_properties(CheatRunner PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${PROJECT_ROOT}/bin")
+
 add_subdirectory(daemon)
 add_subdirectory(util)
 add_subdirectory(selector_action)
 add_subdirectory(toolbox_action)
+add_subdirectory(toolbox_api)
 add_subdirectory(bootstrapper)
 add_subdirectory(unpacker)

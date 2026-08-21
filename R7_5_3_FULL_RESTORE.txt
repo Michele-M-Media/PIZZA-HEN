@@ -1,0 +1,28 @@
+PIZZA HEN R7.5.3 - FULL TOOLBOX / CHEATS / SERVICES RESTORE
+
+Base: R7.5.2.1 compile-repair lineage, preserving R7.5.1 post-KStuff preload rollback.
+
+Restored without boot-time ShellUI preload:
+- FIX70.33 source-grounded lazy Shell service on existing IPC 0x09000016.
+- Toolbox live `set` control plane for ShellUI-owned settings.
+- Game Options OptionMenu hook and ★ PIZZA HEN Cheats entry.
+- Cheats direct-owned web view uses ?view=cheats&tid=<TITLEID>[&pid=<PID>], not Toolbox home.
+- KlogSrv exact ELF from FIX70.34 STEP3.
+- Fan Target 65/70/75/80/85 exact ELFs from FIX70.34 STEP4.
+- Runtime deployment of KlogSrv/Fan Target under /data/PIZZA_HEN/payloads.
+- Single 0x09000016 owner: BREW_PIZZAHEN_SHELL_SERVICE. No duplicate Game Options IPC ID.
+
+Frozen/preserved:
+- KStuff selector / Lite 1.10 path.
+- No automatic ShellUI service injection immediately after KStuff selection.
+- Dual Media tiles and Debug Services v0.1 launcher lineage.
+- Package Installer hardware-PASS websrv /hbldr -> PKGInstall path.
+- ShadowMountPlus pristine upstream path.
+- R7.4 KStuff Toggle / PIZZA Overlay / Payload Repository features.
+
+Validation status:
+- Targeted static audit PASS.
+- All literal Toolbox runAction commands have a toolbox_api handler.
+- toolbox_api has no detected unused static helper regression.
+- Exact Klog/Fan ELF hashes match FIX70.34 source packages.
+- Hardware/PS5 SDK build still required; static PASS is not hardware PASS.
