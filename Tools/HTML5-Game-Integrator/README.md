@@ -1,27 +1,43 @@
 # HTML5 Game Integrator
 
-Portable Windows helper for preparing lightweight HTML5 games as self-contained ZIP packages.
+Portable Windows helper for preparing lightweight HTML5 game bundles.
 
-## What it does
+## Current workflow
 
-- Select a game folder or ZIP.
-- Finds the game's `index.html`.
-- Adds a lightweight runtime layer.
-- Optional FPS cap (default: 20 FPS).
-- Optional Gamepad API mapping for common controllers.
+The tool can now optionally accept a host JavaScript file and package it together with the game while preserving that host file byte-for-byte.
+
+- Select an optional host `.js` file.
+- Select a game folder, ZIP, or `index.html`.
+- The host JavaScript is copied unchanged.
+- SHA-256 is checked before and after the copy.
+- The game receives the lightweight runtime layer.
+- Default frame cap: 20 FPS.
+- Optional Gamepad API mapping.
 - Optional fullscreen-friendly styling.
-- Optional countdown timer overlay (enabled by default at 50 minutes).
-- Timer duration is configurable from 1 to 180 minutes.
-- Creates a new ZIP; the source is never overwritten.
+- Optional countdown timer, default 50 minutes.
+- A separate generic `mmi_game_addon.js` module is included in the bundle.
+- A manifest records the host file hash and confirms `hostModified=false`.
+- The source files are never overwritten.
+
+## Output structure
+
+A typical bundle contains:
+
+- `host/<original-name>.js` — unchanged copy of the selected host script.
+- `game/` — prepared HTML5 game.
+- `addon/mmi_game_addon.js` — separate UI/game overlay module.
+- `MM_BUNDLE.json` — build metadata and host SHA-256.
+- `HOST_SCRIPT_UNCHANGED.txt` — integrity note.
 
 ## Use
 
 1. Double-click `Launch.bat`.
-2. Select the game folder or ZIP.
-3. Choose the output ZIP.
-4. Keep 20 FPS or choose another value.
-5. Leave the countdown enabled for the default 50 minutes, or choose another duration.
-6. Press **BUILD GAME PACKAGE**.
+2. Optionally select a host JavaScript file.
+3. Select the HTML5 game.
+4. Choose the output ZIP.
+5. Keep 20 FPS or choose another value.
+6. Keep the 50 minute timer or change/disable it.
+7. Press **BUILD HOST + GAME BUNDLE**.
 
 ## Controller mapping
 
@@ -31,18 +47,8 @@ Default standard mapping:
 - South face button (Cross/A): Enter
 - Start/Options: Space
 
-This keeps compatibility with many keyboard-driven HTML5 games.
-
-## Countdown timer
-
-When enabled, the generated game package shows a small countdown in the top-right corner. The default is 50:00. When it reaches zero it remains at 00:00 and changes color; it does not forcibly stop or close the game.
-
 ## Scope
 
-This utility is intentionally a generic web-game packager. It does not alter exploit, jailbreak, kernel, or security-bypass logic. It prepares the game/UI portion only.
-
-## Notes
-
-Game compatibility varies. Games that hard-code physics directly to frame count may not behave correctly with a frame cap. For those, use their original timing or a more suitable FPS value.
+The host script is intentionally not rewritten or patched. The game remains a separate UI module in the same bundle. This utility does not alter exploit, jailbreak, kernel, or security-bypass logic.
 
 Only package games/assets you have permission to redistribute.
