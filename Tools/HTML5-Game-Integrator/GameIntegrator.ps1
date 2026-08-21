@@ -24,7 +24,7 @@ function Copy-Directory([string]$Source, [string]$Destination) {
     }
 }
 
-function New-Runtime([int]$Fps, [bool]$Gamepad, [bool]$Fullscreen) {
+function New-Runtime([int]$Fps, [bool]$Gamepad, [bool]$Fullscreen, [bool]$TimerEnabled, [int]$TimerMinutes) {
     $gamepadJs = ''
     if ($Gamepad) {
         $gamepadJs = @'
@@ -75,6 +75,33 @@ document.head.appendChild(mmStyle);
 '@
     }
 
+    $timerJs = ''
+    if ($TimerEnabled) {
+        $timerJs = @"
+const MM_TIMER_MINUTES = $TimerMinutes;
+const mmTimerEnd = Date.now() + (MM_TIMER_MINUTES * 60 * 1000);
+const mmTimer = document.createElement('div');
+mmTimer.id = 'mmi-countdown';
+mmTimer.setAttribute('aria-live', 'polite');
+mmTimer.style.cssText = 'position:fixed;top:12px;right:14px;z-index:2147483647;padding:7px 10px;border-radius:8px;background:rgba(0,0,0,.72);color:#fff;font:600 16px/1.2 Segoe UI,Arial,sans-serif;letter-spacing:.5px;pointer-events:none;box-shadow:0 1px 5px rgba(0,0,0,.35)';
+document.body.appendChild(mmTimer);
+function mmUpdateTimer() {
+  const remain = Math.max(0, mmTimerEnd - Date.now());
+  const totalSeconds = Math.ceil(remain / 1000);
+  const mins = Math.floor(totalSeconds / 60);
+  const secs = totalSeconds % 60;
+  mmTimer.textContent = String(mins).padStart(2,'0') + ':' + String(secs).padStart(2,'0');
+  if (remain <= 0) {
+    mmTimer.textContent = '00:00';
+    mmTimer.style.background = 'rgba(120,0,0,.82)';
+    return;
+  }
+  setTimeout(mmUpdateTimer, Math.min(1000, remain));
+}
+mmUpdateTimer();
+"@
+    }
+
     return @"
 (function(){
 'use strict';
@@ -99,6 +126,7 @@ window.requestAnimationFrame = function(cb){
 window.cancelAnimationFrame = function(id){ return mmNativeCAF(id); };
 $fullscreenJs
 $gamepadJs
+$timerJs
 })();
 "@
 }
@@ -106,8 +134,8 @@ $gamepadJs
 $form = New-Object System.Windows.Forms.Form
 $form.Text = 'HTML5 Game Integrator'
 $form.StartPosition = 'CenterScreen'
-$form.Size = New-Object System.Drawing.Size(720, 420)
-$form.MinimumSize = New-Object System.Drawing.Size(720, 420)
+$form.Size = New-Object System.Drawing.Size(720, 470)
+$form.MinimumSize = New-Object System.Drawing.Size(720, 470)
 $form.BackColor = [System.Drawing.Color]::FromArgb(24,24,24)
 $form.ForeColor = [System.Drawing.Color]::White
 $form.Font = New-Object System.Drawing.Font('Segoe UI', 10)
@@ -188,10 +216,31 @@ $fullscreen.AutoSize = $true
 $fullscreen.Location = New-Object System.Drawing.Point(430, 244)
 $form.Controls.Add($fullscreen)
 
+$timerEnabled = New-Object System.Windows.Forms.CheckBox
+$timerEnabled.Text = 'Add countdown timer'
+$timerEnabled.Checked = $true
+$timerEnabled.AutoSize = $true
+$timerEnabled.Location = New-Object System.Drawing.Point(28, 286)
+$form.Controls.Add($timerEnabled)
+
+$timerLabel = New-Object System.Windows.Forms.Label
+$timerLabel.Text = 'Minutes:'
+$timerLabel.AutoSize = $true
+$timerLabel.Location = New-Object System.Drawing.Point(230, 287)
+$form.Controls.Add($timerLabel)
+
+$timerMinutes = New-Object System.Windows.Forms.NumericUpDown
+$timerMinutes.Minimum = 1
+$timerMinutes.Maximum = 180
+$timerMinutes.Value = 50
+$timerMinutes.Location = New-Object System.Drawing.Point(292, 283)
+$timerMinutes.Size = New-Object System.Drawing.Size(75, 28)
+$form.Controls.Add($timerMinutes)
+
 $build = New-Object System.Windows.Forms.Button
 $build.Text = 'BUILD GAME PACKAGE'
 $build.Font = New-Object System.Drawing.Font('Segoe UI Semibold', 11)
-$build.Location = New-Object System.Drawing.Point(28, 300)
+$build.Location = New-Object System.Drawing.Point(28, 335)
 $build.Size = New-Object System.Drawing.Size(654, 46)
 $build.BackColor = [System.Drawing.Color]::FromArgb(0,120,215)
 $build.ForeColor = [System.Drawing.Color]::White
@@ -202,7 +251,7 @@ $status = New-Object System.Windows.Forms.Label
 $status.Text = 'Ready.'
 $status.AutoSize = $true
 $status.ForeColor = [System.Drawing.Color]::Silver
-$status.Location = New-Object System.Drawing.Point(28, 356)
+$status.Location = New-Object System.Drawing.Point(28, 394)
 $form.Controls.Add($status)
 
 $browseSource.Add_Click({
@@ -212,7 +261,7 @@ $browseSource.Add_Click({
         $sourceBox.Text = $dialog.FileName
         if ([string]::IsNullOrWhiteSpace($outputBox.Text)) {
             $base = [System.IO.Path]::GetFileNameWithoutExtension($dialog.FileName)
-            $outputBox.Text = Join-Path ([System.IO.Path]::GetDirectoryName($dialog.FileName)) ($base + '-20fps-gamepad.zip')
+            $outputBox.Text = Join-Path ([System.IO.Path]::GetDirectoryName($dialog.FileName)) ($base + '-20fps-gamepad-timer.zip')
         }
     }
 })
@@ -222,7 +271,7 @@ $sourceBox.Add_DoubleClick({
     if ($folder.ShowDialog() -eq 'OK') {
         $sourceBox.Text = $folder.SelectedPath
         if ([string]::IsNullOrWhiteSpace($outputBox.Text)) {
-            $outputBox.Text = Join-Path ([System.IO.Path]::GetDirectoryName($folder.SelectedPath)) ((Split-Path $folder.SelectedPath -Leaf) + '-20fps-gamepad.zip')
+            $outputBox.Text = Join-Path ([System.IO.Path]::GetDirectoryName($folder.SelectedPath)) ((Split-Path $folder.SelectedPath -Leaf) + '-20fps-gamepad-timer.zip')
         }
     }
 })
@@ -264,7 +313,7 @@ $build.Add_Click({
         if (-not $index) { throw 'No index.html found in the selected game.' }
 
         $runtimePath = Join-Path $index.DirectoryName 'mmi_runtime.js'
-        $runtime = New-Runtime -Fps ([int]$fps.Value) -Gamepad $gamepad.Checked -Fullscreen $fullscreen.Checked
+        $runtime = New-Runtime -Fps ([int]$fps.Value) -Gamepad $gamepad.Checked -Fullscreen $fullscreen.Checked -TimerEnabled $timerEnabled.Checked -TimerMinutes ([int]$timerMinutes.Value)
         [System.IO.File]::WriteAllText($runtimePath, $runtime, [System.Text.UTF8Encoding]::new($false))
 
         $html = [System.IO.File]::ReadAllText($index.FullName)
@@ -280,6 +329,8 @@ $build.Add_Click({
             targetFps = [int]$fps.Value
             gamepad = [bool]$gamepad.Checked
             fullscreen = [bool]$fullscreen.Checked
+            countdownTimer = [bool]$timerEnabled.Checked
+            countdownMinutes = [int]$timerMinutes.Value
             generatedAtUtc = [DateTime]::UtcNow.ToString('o')
         } | ConvertTo-Json
         [System.IO.File]::WriteAllText((Join-Path $work 'MM_GAME_PACKAGE.json'), $meta, [System.Text.UTF8Encoding]::new($false))
