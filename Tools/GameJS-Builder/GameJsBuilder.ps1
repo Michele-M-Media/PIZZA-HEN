@@ -52,17 +52,18 @@ setInterval(mmPollPad,16);
 
     $timerFlag = if ($TimerEnabled) { 'true' } else { 'false' }
     $autoFlag = if ($AutoStart) { 'true' } else { 'false' }
+    $fullscreenCssJson = ConvertTo-Json -Compress -InputObject $fullscreenCss
 
-    return @"
+    $template = @'
 (function(){
 'use strict';
 if(window.MMGame)return;
 
-const MM_HTML_B64='$HtmlBase64';
-const MM_TARGET_FPS=$Fps;
-const MM_TIMER_ENABLED=$timerFlag;
-const MM_TIMER_MINUTES=$TimerMinutes;
-const MM_AUTOSTART=$autoFlag;
+const MM_HTML_B64='__HTML__';
+const MM_TARGET_FPS=__FPS__;
+const MM_TIMER_ENABLED=__TIMERFLAG__;
+const MM_TIMER_MINUTES=__MINUTES__;
+const MM_AUTOSTART=__AUTOFLAG__;
 let mmRoot=null,mmFrame=null,mmTimer=null,mmTimerHandle=null,mmEnd=0;
 
 function mmDecodeHtml(){
@@ -75,8 +76,8 @@ function mmDecodeHtml(){
 }
 
 function mmRuntimePrefix(){
-  const js=`(function(){\n'use strict';\nconst MM_TARGET_FPS=${MM_TARGET_FPS};\nconst MM_FRAME_MS=1000/Math.max(1,MM_TARGET_FPS);\nconst mmNativeRAF=window.requestAnimationFrame?window.requestAnimationFrame.bind(window):(cb=>setTimeout(()=>cb(performance.now()),16));\nconst mmNativeCAF=window.cancelAnimationFrame?window.cancelAnimationFrame.bind(window):clearTimeout;\nlet mmLastFrame=0;\nwindow.requestAnimationFrame=function(cb){let handle=0;const tick=function(ts){if(!mmLastFrame||(ts-mmLastFrame)>=MM_FRAME_MS){mmLastFrame=ts;cb(ts);}else{handle=mmNativeRAF(tick);}};handle=mmNativeRAF(tick);return handle;};\nwindow.cancelAnimationFrame=function(id){return mmNativeCAF(id);};\nconst mmStyle=document.createElement('style');mmStyle.textContent=${JSON.stringify('$fullscreenCss')};document.head.appendChild(mmStyle);\n$gamepadJs\n})();`;
-  return '<script>'+js.replace(/<\\/script/gi,'<\\/script')+'<\\/script>';
+  const js=`(function(){\n'use strict';\nconst MM_TARGET_FPS=${MM_TARGET_FPS};\nconst MM_FRAME_MS=1000/Math.max(1,MM_TARGET_FPS);\nconst mmNativeRAF=window.requestAnimationFrame?window.requestAnimationFrame.bind(window):(cb=>setTimeout(()=>cb(performance.now()),16));\nconst mmNativeCAF=window.cancelAnimationFrame?window.cancelAnimationFrame.bind(window):clearTimeout;\nlet mmLastFrame=0;\nwindow.requestAnimationFrame=function(cb){let handle=0;const tick=function(ts){if(!mmLastFrame||(ts-mmLastFrame)>=MM_FRAME_MS){mmLastFrame=ts;cb(ts);}else{handle=mmNativeRAF(tick);}};handle=mmNativeRAF(tick);return handle;};\nwindow.cancelAnimationFrame=function(id){return mmNativeCAF(id);};\nconst mmStyle=document.createElement('style');mmStyle.textContent=__FULLCSSJSON__;document.head.appendChild(mmStyle);\n__GAMEPAD__\n})();`;
+  return '<script>'+js.replace(/<\/script/gi,'<\\/script')+'<\/script>';
 }
 
 function mmUpdateTimer(){
@@ -126,7 +127,9 @@ if(MM_AUTOSTART){
   if(document.body)boot();else window.addEventListener('DOMContentLoaded',boot,{once:true});
 }
 })();
-"@
+'@
+
+    return $template.Replace('__HTML__', $HtmlBase64).Replace('__FPS__', [string]$Fps).Replace('__TIMERFLAG__', $timerFlag).Replace('__MINUTES__', [string]$TimerMinutes).Replace('__AUTOFLAG__', $autoFlag).Replace('__FULLCSSJSON__', $fullscreenCssJson).Replace('__GAMEPAD__', $gamepadJs)
 }
 
 $form = New-Object System.Windows.Forms.Form
