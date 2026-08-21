@@ -1,0 +1,17 @@
+name: Feature request
+description: Suggest an improvement for PIZZA HEN
+title: "[FEATURE] "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: request
+    attributes:
+      label: Requested feature
+    validations:
+      required: true
+  - type: textarea
+    id: reason
+    attributes:
+      label: Why it would help
+    validations:
+      required: true

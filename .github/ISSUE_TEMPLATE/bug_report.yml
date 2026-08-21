@@ -1,0 +1,42 @@
+name: Bug report
+description: Report a reproducible PIZZA HEN issue
+title: "[BUG] "
+labels: [bug]
+body:
+  - type: input
+    id: firmware
+    attributes:
+      label: PS5 firmware
+      placeholder: "e.g. 12.20"
+    validations:
+      required: true
+  - type: input
+    id: kstuff
+    attributes:
+      label: KStuff mode/version
+      placeholder: "e.g. Lite 1.10"
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior / error code
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Remove private information before posting.
