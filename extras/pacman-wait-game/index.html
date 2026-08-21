@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Pac-Man Wait Game</title>
+<style>
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#000;color:#fff;font-family:Arial,Helvetica,sans-serif}body{display:flex;align-items:center;justify-content:center}#wrap{position:relative;width:100vw;height:100vh;display:flex;align-items:center;justify-content:center;background:#000}canvas{display:block;background:#000;image-rendering:auto;max-width:100vw;max-height:100vh}#hud{position:absolute;left:0;top:0;width:100%;box-sizing:border-box;padding:10px 14px;display:flex;justify-content:space-between;pointer-events:none;font-weight:700;letter-spacing:.08em;text-shadow:0 2px 4px #000;font-size:clamp(12px,1.8vw,20px)}#msg{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);text-align:center;color:#fff;font-weight:700;letter-spacing:.08em;text-shadow:0 3px 8px #000;pointer-events:none;font-size:clamp(18px,4vw,40px)}#sub{display:block;margin-top:12px;color:#ddd;font-size:clamp(10px,1.6vw,17px);font-weight:600;letter-spacing:.04em}.hidden{display:none}</style>
+</head>
+<body>
+<div id="wrap">
+<canvas id="game" width="960" height="720"></canvas>
+<div id="hud"><span id="score">SCORE 0</span><span id="level">LEVEL 1</span><span id="lives">LIVES 3</span></div>
+<div id="msg">PAC-MAN<span id="sub">Press ENTER to start</span></div>
+</div>
+<script>
+(()=>{
+'use strict';
+const cv=document.getElementById('game'),ctx=cv.getContext('2d');
+const scoreEl=document.getElementById('score'),levelEl=document.getElementById('level'),livesEl=document.getElementById('lives');
+const msg=document.getElementById('msg'),sub=document.getElementById('sub');
+const COLS=19,ROWS=21,TILE=30,OX=(cv.width-COLS*TILE)/2,OY=(cv.height-ROWS*TILE)/2+18;
+const RAW=[
+'###################',
+'#........#........#',
+'#.###.##.#.##.###.#',
+'#o###.##.#.##.###o#',
+'#.................#',
+'#.###.#.#####.#.###',
+'#.....#...#...#...#',
+'#####.### # ###.###',
+'    #.#       #.#  ',
+'#####.# ## ## #.###',
+'     .  #   #  .   ',
+'#####.# ##### #.###',
+'    #.#       #.#  ',
+'#####.# ##### #.###',
+'#........#........#',
+'#.###.##.#.##.###.#',
+'#o..#..........#..o#'.slice(0,19),
+'###.#.#.#####.#.#.#',
+'#.....#...#...#...#',
+'#.#######.#.#######',
+'#.................#'
+];
+let map=[],score=0,level=1,lives=3,state='title',pellets=0,power=0,last=0,fright=0;
+const dirs={left:{x:-1,y:0,a:Math.PI},right:{x:1,y:0,a:0},up:{x:0,y:-1,a:-Math.PI/2},down:{x:0,y:1,a:Math.PI/2}};
+let want=dirs.left;
+const player={x:9,y:15,px:0,py:0,dir:dirs.left,speed:5.3,mouth:0};
+const ghostStarts=[{x:8,y:10,c:'#ff314f',d:dirs.left},{x:9,y:10,c:'#ff9de1',d:dirs.up},{x:10,y:10,c:'#55e7ff',d:dirs.right},{x:9,y:9,c:'#ff9f43',d:dirs.down}];
+let ghosts=[];
+function normMap(){map=RAW.map(r=>r.padEnd(COLS,' ').slice(0,COLS).split(''));pellets=0;for(let y=0;y<ROWS;y++)for(let x=0;x<COLS;x++){if(map[y][x]==='.'||map[y][x]==='o')pellets++;}}
+function resetActors(){player.x=9;player.y=15;player.px=0;player.py=0;player.dir=dirs.left;want=dirs.left;ghosts=ghostStarts.map((g,i)=>({x:g.x,y:g.y,px:0,py:0,dir:g.d,c:g.c,speed:4.2+i*.12,dead:false}));fright=0;}
+function updateHud(){scoreEl.textContent='SCORE '+score;levelEl.textContent='LEVEL '+level;livesEl.textContent='LIVES '+lives;}
+function center(t,s){msg.childNodes[0].nodeValue=t;sub.textContent=s||'';msg.classList.remove('hidden');}
+function hideMsg(){msg.classList.add('hidden');}
+function startGame(){score=0;level=1;lives=3;normMap();resetActors();state='play';updateHud();hideMsg();}
+function nextLevel(){level++;normMap();resetActors();state='ready';updateHud();center('LEVEL '+level,'Press ENTER to continue');}
+function loseLife(){lives--;updateHud();if(lives<=0){state='gameover';center('GAME OVER','Press ENTER to restart');return;}resetActors();state='ready';center('READY!','Press ENTER to continue');}
+function tileAt(x,y){if(y<0||y>=ROWS)return '#';x=(x+COLS)%COLS;return map[y][x];}
+function passable(x,y){return tileAt(x,y)!=='#';}
+function onCenter(a){return Math.abs(a.px)<.06&&Math.abs(a.py)<.06;}
+function chooseDir(a,desired){if(onCenter(a)&&passable(a.x+desired.x,a.y+desired.y))a.dir=desired;}
+function stepActor(a,dt,spd){if(onCenter(a)){a.px=0;a.py=0;if(!passable(a.x+a.dir.x,a.y+a.dir.y))return;}let d=spd*dt;a.px+=a.dir.x*d;a.py+=a.dir.y*d;while(a.px>=.5){a.px-=1;a.x++;}while(a.px<=-.5){a.px+=1;a.x--;}while(a.py>=.5){a.py-=1;a.y++;}while(a.py<=-.5){a.py+=1;a.y--;}if(a.x<0)a.x=COLS-1;if(a.x>=COLS)a.x=0;}
+function eat(){if(!onCenter(player))return;const c=tileAt(player.x,player.y);if(c==='.'||c==='o'){map[player.y][player.x]=' ';pellets--;score+=c==='o'?50:10;if(c==='o'){fright=8.5;for(const g of ghosts)g.dead=false;}updateHud();if(pellets<=0)nextLevel();}}
+function reverse(d){return d===dirs.left?dirs.right:d===dirs.right?dirs.left:d===dirs.up?dirs.down:dirs.up;}
+function ghostChoices(g){const a=[];for(const d of Object.values(dirs)){if(d===reverse(g.dir))continue;if(passable(g.x+d.x,g.y+d.y))a.push(d);}if(!a.length&&passable(g.x+reverse(g.dir).x,g.y+reverse(g.dir).y))a.push(reverse(g.dir));return a;}
+function ghostTarget(g,i){if(fright>0)return {x:Math.random()*COLS,y:Math.random()*ROWS};if(i===0)return {x:player.x,y:player.y};if(i===1)return {x:player.x+player.dir.x*4,y:player.y+player.dir.y*4};if(i===2)return {x:COLS-1-player.x,y:ROWS-1-player.y};return {x:player.x+((i%2)?-3:3),y:player.y+((i%2)?3:-3)};}
+function steerGhost(g,i){if(!onCenter(g))return;const c=ghostChoices(g);if(!c.length)return;const t=ghostTarget(g,i);let best=c[0],bd=1e9;for(const d of c){const nx=g.x+d.x,ny=g.y+d.y,dd=(nx-t.x)*(nx-t.x)+(ny-t.y)*(ny-t.y)+(fright>0?Math.random()*12:0);if(dd<bd){bd=dd;best=d;}}g.dir=best;}
+function collide(){for(const g of ghosts){const dx=(player.x+player.px)-(g.x+g.px),dy=(player.y+player.py)-(g.y+g.py);if(dx*dx+dy*dy<.34){if(fright>0&&!g.dead){score+=200;updateHud();g.x=9;g.y=10;g.px=g.py=0;g.dead=true;}else if(fright<=0){loseLife();return;}}}}
+function update(dt){if(state!=='play')return;chooseDir(player,want);stepActor(player,dt,player.speed+Math.min(2,level*.15));player.mouth+=dt*10;eat();fright=Math.max(0,fright-dt);ghosts.forEach((g,i)=>{steerGhost(g,i);stepActor(g,dt,g.speed+Math.min(1.8,level*.12));if(fright<=0)g.dead=false;});collide();}
+function wall(x,y){const X=OX+x*TILE,Y=OY+y*TILE;ctx.fillStyle='#0924a8';ctx.fillRect(X+2,Y+2,TILE-4,TILE-4);ctx.strokeStyle='#3d68ff';ctx.lineWidth=2;ctx.strokeRect(X+4,Y+4,TILE-8,TILE-8);}
+function drawMap(){ctx.fillStyle='#000';ctx.fillRect(0,0,cv.width,cv.height);for(let y=0;y<ROWS;y++)for(let x=0;x<COLS;x++){const c=map[y][x];const X=OX+x*TILE+TILE/2,Y=OY+y*TILE+TILE/2;if(c==='#')wall(x,y);else if(c==='.') {ctx.fillStyle='#f8e7b8';ctx.beginPath();ctx.arc(X,Y,2.7,0,Math.PI*2);ctx.fill();}else if(c==='o'){ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(X,Y,7,0,Math.PI*2);ctx.fill();}}}
+function pos(a){return {x:OX+(a.x+a.px)*TILE+TILE/2,y:OY+(a.y+a.py)*TILE+TILE/2};}
+function drawPlayer(){const p=pos(player),m=.18+.12*(.5+.5*Math.sin(player.mouth));ctx.fillStyle='#ffe500';ctx.beginPath();ctx.moveTo(p.x,p.y);ctx.arc(p.x,p.y,TILE*.43,player.dir.a+m,player.dir.a+Math.PI*2-m);ctx.closePath();ctx.fill();}
+function drawGhost(g){const p=pos(g),r=TILE*.4,fr=fright>0&&!g.dead;ctx.fillStyle=fr?(fright<2&&Math.floor(fright*8)%2?'#fff':'#2356ff'):g.c;ctx.beginPath();ctx.arc(p.x,p.y-r*.08,r,Math.PI,0);ctx.lineTo(p.x+r,p.y+r*.72);for(let i=0;i<4;i++){const sx=p.x+r-i*(2*r/3),ex=sx-2*r/3;ctx.quadraticCurveTo((sx+ex)/2,p.y+r*.42,ex,p.y+r*.72);}ctx.closePath();ctx.fill();ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(p.x-r*.35,p.y-r*.1,r*.22,0,Math.PI*2);ctx.arc(p.x+r*.35,p.y-r*.1,r*.22,0,Math.PI*2);ctx.fill();ctx.fillStyle=fr?'#fff':'#1234aa';ctx.beginPath();ctx.arc(p.x-r*.35+g.dir.x*3,p.y-r*.1+g.dir.y*3,r*.1,0,Math.PI*2);ctx.arc(p.x+r*.35+g.dir.x*3,p.y-r*.1+g.dir.y*3,r*.1,0,Math.PI*2);ctx.fill();}
+function draw(){drawMap();drawPlayer();ghosts.forEach(drawGhost);if(state==='paused'){ctx.fillStyle='rgba(0,0,0,.55)';ctx.fillRect(0,0,cv.width,cv.height);}}
+function frame(t){const dt=Math.min(.033,(t-last)/1000||0);last=t;update(dt);draw();requestAnimationFrame(frame);}requestAnimationFrame(frame);
+function key(e){const k=e.key.toLowerCase();if(['arrowleft','arrowright','arrowup','arrowdown',' ','enter','w','a','s','d'].includes(k))e.preventDefault();if(k==='arrowleft'||k==='a')want=dirs.left;else if(k==='arrowright'||k==='d')want=dirs.right;else if(k==='arrowup'||k==='w')want=dirs.up;else if(k==='arrowdown'||k==='s')want=dirs.down;else if(k===' '){if(state==='play'){state='paused';center('PAUSE','Press SPACE to continue');}else if(state==='paused'){state='play';hideMsg();}}else if(k==='enter'){if(state==='title'||state==='gameover')startGame();else if(state==='ready'){state='play';hideMsg();}}}
+window.addEventListener('keydown',key,{passive:false});
+window.addEventListener('resize',()=>{const ar=cv.width/cv.height,w=innerWidth,h=innerHeight;if(w/h>ar){cv.style.height=h+'px';cv.style.width=(h*ar)+'px';}else{cv.style.width=w+'px';cv.style.height=(w/ar)+'px';}});window.dispatchEvent(new Event('resize'));
+window.PacWaitGame={start(){if(state==='title'||state==='gameover')startGame();else if(state==='ready'){state='play';hideMsg();}},pause(){if(state==='play'){state='paused';center('PAUSE','');}},resume(){if(state==='paused'){state='play';hideMsg();}},stop(){state='title';center('PAC-MAN','Press ENTER to start');}};
+normMap();resetActors();updateHud();
+})();
+</script>
+</body>
+</html>
