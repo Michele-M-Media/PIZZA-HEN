@@ -1,0 +1,13 @@
+R7.2 SOURCE-GROUNDED CE-108262 REPAIR
+
+Cause removed:
+R6 introduced cmd_preload_toolbox_hooks(), which injects shellui.elf automatically during daemon startup in browser_toolbox_mode. R3/R5 did not do this. Hardware CE-108262-9 was reported after the R6/R7 line.
+
+This package restores only daemon/source/main.cpp and daemon/source/msg.cpp to exact R5 content while preserving the R7.1 UTIL backend/dependency repair. No alternative route or new injector was added.
+
+R5_DAEMON_MAIN_SHA256=8ecfd06955038b429e00e90508d198d6b2cc81a26a3012a47d4f0e43fb703274
+R5_DAEMON_MSG_SHA256=0e2c200b2c5c7053f82dd529a45adff8331bf4d927476db329e2dab67f0523a0
+R3_BOOTSTRAPPER_MAIN_SHA256=cf202070d73c50bcd5529c8895a93f9ef1132d07c397c51a5a560e91cd2b8419
+R3_SELECTOR_ACTION_SHA256=950360ead9fb67d63f77f1977c4c16fc322ccca1726b1b802742a6cdd866c5c2
+R72_DAEMON_MAIN_SHA256=8ecfd06955038b429e00e90508d198d6b2cc81a26a3012a47d4f0e43fb703274
+R72_DAEMON_MSG_SHA256=0e2c200b2c5c7053f82dd529a45adff8331bf4d927476db329e2dab67f0523a0

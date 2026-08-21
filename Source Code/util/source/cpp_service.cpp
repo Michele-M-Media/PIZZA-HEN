@@ -24,6 +24,7 @@ along with this program; see the file COPYING. If not, see
 #include "dbg/dbg.hpp"
 #include "elf/elf.hpp"
 #include "hijacker/hijacker.hpp"
+#include "offsets.hpp"
 #include "ipc.hpp"
 
 #include <netinet/in.h>
@@ -430,18 +431,77 @@ uint8_t *PatternScan(const uint64_t module_base, const uint64_t module_size, con
     return nullptr;
 }
 // Shell patch functions
+static void write_multifw_status(const char* shellcore_patch_state) {
+    (void)mkdir("/data/PIZZA_HEN/runtime", 0777);
+    FILE* fp = fopen("/data/PIZZA_HEN/runtime/firmware_status.txt", "w");
+    if (!fp) {
+        return;
+    }
+    fprintf(fp, "detected_fw=0x%08x\n", kernel_get_fw_version());
+    fprintf(fp, "resolver=%s\n", offsets::resolver_name());
+    fprintf(fp, "target_range=3.00-12.70\n");
+    fprintf(fp, "shellcore_patch=%s\n", shellcore_patch_state ? shellcore_patch_state : "unknown");
+    fprintf(fp, "policy=multi-sdk+multi-firmware-capability-based\n");
+    fclose(fp);
+}
+
+static bool shellcore_patch_patterns_supported(uint32_t fw) {
+    switch (fw & VERSION_MASK) {
+        case V200: case V220: case V225: case V226: case V230: case V250: case V270:
+        case V300: case V310: case V320: case V321:
+        case V400: case V402: case V403: case V450: case V451:
+        case V500: case V502: case V510: case V550:
+        case V600: case V602: case V650:
+        case V700: case V701: case V720: case V740: case V760: case V761:
+        case V800: case V820:
+            return true;
+        default:
+            return false;
+    }
+}
+
 bool patchShellCore() {
-    const UniquePtr<Hijacker> executable = Hijacker::getHijacker(get_shellcore_pid());
+    const int shellcore_pid = get_shellcore_pid();
+    if (shellcore_pid < 0) {
+        etaHEN_log("SceShellCore process not found");
+        write_multifw_status("process-not-found");
+        return false;
+    }
+
+    if (!offsets::core_resolver_available()) {
+        etaHEN_log("SceShellCore access unavailable: firmware resolver not available (FW 0x%08x)",
+                   kernel_get_fw_version());
+        write_multifw_status("resolver-unavailable");
+        return false;
+    }
+
+    const UniquePtr<Hijacker> executable = Hijacker::getHijacker(shellcore_pid);
     uintptr_t shellcore_base = 0;
     uint64_t shellcore_size = 0;
 
     if (executable) {
-        shellcore_base = executable->getEboot()->getTextSection()->start();
-        shellcore_size = executable->getEboot()->getTextSection()->sectionLength();
+        SharedLib* eboot = executable->getEboot();
+        const SharedLibSection* text = eboot ? eboot->getTextSection() : nullptr;
+        if (!eboot || !text) {
+            etaHEN_log("SceShellCore hijacker resolved pid=%d but eboot/text metadata is unavailable", shellcore_pid);
+            write_multifw_status("shellcore-metadata-unavailable");
+            return false;
+        }
+        shellcore_base = text->start();
+        shellcore_size = text->sectionLength();
         g_ShellCorePid = executable->getPid();
     }
     else {
-        notify(true, "SceShellCore not found");
+        etaHEN_log("SceShellCore process exists (pid=%d) but hijacker access failed; resolver=%s",
+                   shellcore_pid, offsets::resolver_name());
+        write_multifw_status("hijacker-access-failed");
+        return false;
+    }
+
+    if (!shellcore_patch_patterns_supported(getSystemSwVersion())) {
+        etaHEN_log("ShellCore /data compatibility patch is capability-skipped on FW 0x%08x; core runtime continues",
+                   getSystemSwVersion());
+        write_multifw_status("capability-skipped");
         return false;
     }
 
@@ -585,7 +645,7 @@ bool patchShellCore() {
             );
             break;
         default:
-            etaHEN_log("Unknown firmware: 0x%08x", getSystemSwVersion());
+            etaHEN_log("PIZZA HEN: ShellCore legacy patch capability unavailable on FW 0x%08x", getSystemSwVersion());
             break;
         }
 
@@ -608,6 +668,7 @@ bool patchShellCore() {
 
             write_bytes(g_ShellCorePid, shellcore_offset_patch1, "b801000000");
             write_bytes(g_ShellCorePid, shellcore_offset_patch2, "b801000000");
+            status = true;
 
             etaHEN_log("Patched shellcore for `/data` mount\n"
                 "g_ShellCorePid: 0x%08x\n"
@@ -622,6 +683,7 @@ bool patchShellCore() {
                 ((uint64_t)patch_checker_offset - (uint64_t)shellcore_copy);
             etaHEN_log("shellcore_offset_patch: 0x%lx", shellcore_offset_patch);
             write_bytes(g_ShellCorePid, shellcore_offset_patch, "554889E5B8142618805DC3");
+            status = true;
         }
     }
 
@@ -631,6 +693,7 @@ bool patchShellCore() {
         shellcore_copy = nullptr;
     }
 
+    write_multifw_status(status ? "applied" : "pattern-not-found");
     return status;
 }
 

@@ -18,6 +18,7 @@ along with this program; see the file COPYING. If not, see
 #include "../../extern/cJSON/cJSON.hpp"
 #include "../../extern/tiny-json/tiny-json.hpp"
 #include "globalconf.hpp"
+#include "onion/debug_settings_route_policy.hpp"
 #include <atomic>
 #include <msg.hpp>
 #include <pthread.h>
@@ -999,6 +1000,100 @@ static void write_toolbox_resident_pid(int pid) {
     fclose(fp);
 }
 
+
+
+// R7.5.3: restore the source-grounded FIX70.33 lazy Shell service.
+// This is the FIX70.37 Shell Service injection pattern narrowed to the
+// Curated ShellUI consumers are installed by service mode; Debug Services remains separate.
+static const char *PIZZAHEN_SHELL_SERVICE_MODE =
+    "/system_tmp/pizzahen_shell_service_mode";
+static const char *PIZZAHEN_SHELL_SERVICE_ONLINE =
+    "/system_tmp/pizzahen_shell_service_online";
+static const char *PIZZAHEN_SHELL_SERVICE_PID =
+    "/system_tmp/pizzahen_shell_service_pid";
+
+static int read_shell_service_pid(void) {
+    FILE *fp = fopen(PIZZAHEN_SHELL_SERVICE_PID, "r");
+    if (!fp) return -1;
+    int pid = -1;
+    if (fscanf(fp, "%d", &pid) != 1) pid = -1;
+    fclose(fp);
+    return pid;
+}
+
+bool cmd_ensure_shell_service_runtime() {
+    int pid = get_shellui_pid();
+    for (int find_tries = 0; pid < 0 && find_tries < 20; ++find_tries) {
+        usleep(250 * 1000);
+        pid = get_shellui_pid();
+    }
+    if (pid < 0) {
+        etaHEN_log("PIZZA HEN R7.3: Shell service: ShellUI pid unavailable");
+        return false;
+    }
+
+    const int resident_pid = read_shell_service_pid();
+    if (if_exists(PIZZAHEN_SHELL_SERVICE_ONLINE) && resident_pid == pid) {
+        etaHEN_log("PIZZA HEN R7.3: Shell service already resident in ShellUI pid %d", pid);
+        return true;
+    }
+
+    // Stale /system_tmp markers must never suppress injection into a new ShellUI.
+    unlink(PIZZAHEN_SHELL_SERVICE_ONLINE);
+    unlink(PIZZAHEN_SHELL_SERVICE_PID);
+    unlink("/system_tmp/toolbox_online");
+    touch_file(PIZZAHEN_SHELL_SERVICE_MODE);
+
+    char buz[100] = {0};
+    bool paused_here = false;
+    if (sceKernelMprotect(&buz[0], 100, 0x7) == 0 && pause_resume_kstuff()) {
+        touch_file("/system_tmp/kstuff_paused");
+        paused_here = true;
+    }
+
+    const bool inject_ok = Inject_Toolbox(pid, shellui_elf_start);
+    if (!inject_ok) {
+        if (paused_here && if_exists("/system_tmp/kstuff_paused")) {
+            pause_resume_kstuff();
+            unlink("/system_tmp/kstuff_paused");
+        }
+        unlink(PIZZAHEN_SHELL_SERVICE_MODE);
+        etaHEN_log("PIZZA HEN R7.3: Shell service injection failed; ShellUI left running");
+        return false;
+    }
+
+    for (int i = 0; i < 150 && !if_exists(PIZZAHEN_SHELL_SERVICE_ONLINE); ++i)
+        usleep(100 * 1000);
+
+    const bool online = if_exists(PIZZAHEN_SHELL_SERVICE_ONLINE) &&
+                        read_shell_service_pid() == pid;
+    if (!online && paused_here && if_exists("/system_tmp/kstuff_paused")) {
+        pause_resume_kstuff();
+        unlink("/system_tmp/kstuff_paused");
+    }
+
+    // The minimal service uses toolbox_online only as its injection handshake.
+    // Consume it here so a later, explicit Debug Services injection must wait
+    // for its own fresh v0.1 toolbox_online marker.
+    unlink("/system_tmp/toolbox_online");
+    unlink(PIZZAHEN_SHELL_SERVICE_MODE);
+    etaHEN_log("PIZZA HEN R7.3: Shell service %s", online ? "ONLINE" : "NOT READY");
+    return online;
+}
+
+static const char *pizzahen_debug_services_uri_for_current_firmware() {
+  OrbisKernelSwVersion sys_ver{};
+  if (sceKernelGetProsperoSystemSwVersion(&sys_ver) != 0) {
+    // Preserve the v0.1 / 10.01 route if system-version discovery fails.
+    return onion::debug_settings_route::kStandardRoute.with_mode_uri;
+  }
+
+  const auto route =
+      onion::debug_settings_route::DebugSettingsRoutePolicy::for_system_version(
+          sys_ver.version);
+  return route.toolbox_uri(onion::debug_settings_route::UriKind::WithMode);
+}
+
 bool cmd_enable_toolbox(){
     // FIX36: opening the Media tile more than once must never inject a second
     // ShellUI payload. Associate the resident marker with the current ShellUI
@@ -1007,7 +1102,7 @@ bool cmd_enable_toolbox(){
     int resident_pid = read_toolbox_resident_pid();
     if (current_shellui_pid > 0 && resident_pid == current_shellui_pid) {
       etaHEN_log("PIZZA HEN Toolbox already resident in ShellUI pid %d; reusing it", current_shellui_pid);
-      int uri_rc = ItemzLaunchByUri("pssettings:play?mode=settings&function=debug_settings");
+      int uri_rc = ItemzLaunchByUri(pizzahen_debug_services_uri_for_current_firmware());
       etaHEN_log("PIZZA HEN Toolbox native reopen URI rc=0x%X", uri_rc);
       return true;
     }
@@ -1021,7 +1116,7 @@ bool cmd_enable_toolbox(){
     if (if_exists("/system_tmp/pizzahen_shellui_preloaded") && current_shellui_pid > 0) {
       write_toolbox_resident_pid(current_shellui_pid);
       etaHEN_log("PIZZA HEN ShellUI already resident from legacy preload marker");
-      int uri_rc = ItemzLaunchByUri("pssettings:play?mode=settings&function=debug_settings");
+      int uri_rc = ItemzLaunchByUri(pizzahen_debug_services_uri_for_current_firmware());
       etaHEN_log("PIZZA HEN Toolbox legacy native reopen URI rc=0x%X", uri_rc);
       return true;
     }
@@ -1075,7 +1170,7 @@ bool cmd_enable_toolbox(){
 
     // FIX36: browser navigation to a psettings: URI is rejected by the PS5
     // Media web view. Ask ShellUI to open Debug Settings natively instead.
-    int uri_rc = ItemzLaunchByUri("pssettings:play?mode=settings&function=debug_settings");
+    int uri_rc = ItemzLaunchByUri(pizzahen_debug_services_uri_for_current_firmware());
     etaHEN_log("PIZZA HEN Toolbox first native open URI rc=0x%X", uri_rc);
 
     // The Toolbox injection succeeded even if the URI transition itself fails;
@@ -1121,6 +1216,11 @@ void handleIPC(struct clientArgs *client, std::string &inputStr,
     } else {
         reply(sender_app, true);
     }
+    break;
+  }
+  case BREW_PIZZAHEN_SHELL_SERVICE: {
+    if (cmd_ensure_shell_service_runtime()) reply(sender_app, false);
+    else reply(sender_app, true);
     break;
   }
   case BREW_LAST_RET: {

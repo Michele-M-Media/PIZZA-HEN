@@ -45,6 +45,9 @@ extern bool is_handler_enabled;
 #include <memory>
 #include <sfo.hpp>
 #include <sstream>
+#include <pkg_manager.hpp>
+#include <plugin_manager.hpp>
+#include <payload_repository.hpp>
 
 extern pthread_t cmd_server;
 void* runCommandNControlServer(void*);
@@ -232,24 +235,24 @@ std::string GetPS5Version(const std::string &jsonpath) {
     std::ifstream input_file(jsonpath);
     if (!input_file.is_open()) {
       etaHEN_log("Failed to open file for reading: %s", jsonpath.c_str());
-      return "Error Opening Json";
+      return {};
     }
 
     nlohmann::json j;
     input_file >> j;
     input_file.close();
 
-    if (j.contains("contentVersion"))
-      return std::string(j["contentVersion"]);
-
+    if (j.contains("contentVersion") && j["contentVersion"].is_string()) {
+      const std::string version = j["contentVersion"].get<std::string>();
+      if (!version.empty())
+        return version;
+    }
   } catch (const std::exception &e) {
-    // Handle exceptions here, you can log the error or perform other error
-    // handling tasks
-    etaHEN_log("An exception occurred: %s", e.what());
-    return "Error getting version";
+    etaHEN_log("Failed to parse PS5 version metadata %s: %s",
+               jsonpath.c_str(), e.what());
   }
 
-  return "Error getting version";
+  return {};
 }
 
 // Callback function to write received data
@@ -362,28 +365,34 @@ void handleIPC(struct clientArgs *client, std::string &inputStr,
     std::string tmp, game_version;
     bool is_PS5 = tid.rfind("PPSA", 0) == 0; // Check if tid starts with "PPSA"
     if (is_PS5) {
-      // Attempt to load JSON files for PS5 games
-      tmp = "/system_data/priv/appmeta/" + tid + "/param.json";
-      if (!if_exists(tmp.c_str())) {
-        etaHEN_log("%s: json %s does not exist", tid.c_str(), tmp.c_str());
-        tmp = "/system_data/priv/appmeta/external/" + tid + "/param.json";
+      // etaHEN already covered system_data/external and system_ex. PIZZA HEN
+      // also checks the standard installed-title metadata roots used by PS5.
+      const std::string candidates[] = {
+        "/system_data/priv/appmeta/" + tid + "/param.json",
+        "/user/appmeta/" + tid + "/param.json",
+        "/system_data/priv/appmeta/external/" + tid + "/param.json",
+        "/user/app/" + tid + "/sce_sys/param.json",
+        "/system_ex/app/" + tid + "/sce_sys/param.json",
+      };
 
-        if (!if_exists(tmp.c_str())) {
-          etaHEN_log("%s: json %s does not exist", tid.c_str(), tmp.c_str());
-          tmp = "/system_ex/app/" + tid + "/sce_sys/param.json";
-          if (!if_exists(tmp.c_str())) {
-            etaHEN_log("%s: json %s does not exist", tid.c_str(), tmp.c_str());
-            notify(true, "Failed to get game version");
-            reply(sender_app, true);
-            break;
-          }
+      for (const auto &candidate : candidates) {
+        if (!if_exists(candidate.c_str())) {
+          etaHEN_log("%s: json %s does not exist", tid.c_str(), candidate.c_str());
+          continue;
+        }
+        const std::string candidate_version = GetPS5Version(candidate);
+        if (!candidate_version.empty()) {
+          tmp = candidate;
+          game_version = candidate_version;
+          etaHEN_log("%s: detected contentVersion %s from %s", tid.c_str(),
+                     game_version.c_str(), tmp.c_str());
+          break;
         }
       }
 
-      game_version = GetPS5Version(tmp);
       if (game_version.empty()) {
         notify(true, "Failed to get game version");
-        etaHEN_log("Failed to get game version for PS5 Game");
+        etaHEN_log("Failed to get game version for PS5 Game %s", tid.c_str());
         reply(sender_app, true);
         break;
       }
@@ -720,6 +729,73 @@ void handleIPC(struct clientArgs *client, std::string &inputStr,
       break;
     }
     reply(sender_app, false);
+    break;
+  }
+  case BREW_UTIL_DOWNLOAD_STORE: {
+    const char *downloads = "/data/PIZZA_HEN/downloads";
+    const char *dst = "/data/PIZZA_HEN/downloads/Store-R2-PS5.pkg";
+    mkdir("/data/PIZZA_HEN", 0777);
+    mkdir(downloads, 0777);
+    unlink(dst);
+    notify(true, "Downloading Homebrew Store for PIZZA HEN local install...");
+    if (!download_file("https://pkg-zone.com/update/Store-R2-PS5.pkg", dst)) {
+      etaHEN_log("PIZZA HEN: Homebrew Store download failed");
+      unlink(dst);
+      reply(sender_app, true);
+      break;
+    }
+    struct stat st{};
+    if (stat(dst, &st) != 0 || st.st_size < 4096) {
+      etaHEN_log("PIZZA HEN: Homebrew Store download is missing/too small");
+      unlink(dst);
+      reply(sender_app, true);
+      break;
+    }
+    chmod(dst, 0666);
+    etaHEN_log("PIZZA HEN: Homebrew Store downloaded locally: %s (%lld bytes)", dst, (long long)st.st_size);
+    reply(sender_app, false, dst);
+    break;
+  }
+  case BREW_UTIL_SCAN_PLUGINS: {
+    reply(sender_app, !pizzahen_scan_plugin_catalog());
+    break;
+  }
+  case BREW_UTIL_STOP_PLUGIN: {
+    const char *p = json_getPropertyValue(my_json, "plugin_path");
+    const char *t = json_getPropertyValue(my_json, "title_id");
+    json_t const *kind_prop = json_getProperty(my_json, "is_payload");
+    const bool is_payload = kind_prop ? json_getInteger(kind_prop) != 0 : false;
+    if (!p || !*p || !t || !*t) { reply(sender_app, true); break; }
+    reply(sender_app, !pizzahen_stop_plugin(p, t, is_payload));
+    break;
+  }
+  case BREW_UTIL_SET_PLUGIN_AUTOSTART: {
+    const char *p = json_getPropertyValue(my_json, "plugin_path");
+    json_t const *enabled_prop = json_getProperty(my_json, "enabled");
+    const bool enabled = enabled_prop ? json_getInteger(enabled_prop) != 0 : false;
+    if (!p || !*p) { reply(sender_app, true); break; }
+    reply(sender_app, !pizzahen_set_plugin_autostart(p, enabled));
+    break;
+  }
+  case BREW_UTIL_REFRESH_PAYLOAD_REPO: {
+    reply(sender_app, !pizzahen_payload_repo_refresh());
+    break;
+  }
+  case BREW_UTIL_INSTALL_PAYLOAD_REPO: {
+    const char *filename = json_getPropertyValue(my_json, "filename");
+    if (!filename || !*filename) { reply(sender_app, true); break; }
+    reply(sender_app, !pizzahen_payload_repo_install(filename));
+    break;
+  }
+  /* FIX70.33: web control handler removed; not present in supplied etaHEN service source. */
+  case BREW_UTIL_SCAN_USB_PKGS:{
+    int count = pizzahen_pkg_scan_usb();
+    if (count < 0) {
+      reply(sender_app, true);
+      break;
+    }
+    snprintf(temp, sizeof(temp), "%d", count);
+    reply(sender_app, false, temp);
     break;
   }
   case BREW_KILL_DAEMON:{

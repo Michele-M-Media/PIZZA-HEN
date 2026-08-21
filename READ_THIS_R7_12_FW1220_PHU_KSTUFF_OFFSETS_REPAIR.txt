@@ -1,0 +1,79 @@
+PIZZA HEN v1.0 — R7.12 FW 12.20+ PHU overlay + KStuff pause/toggle repair
+==========================================================================
+
+Scope
+-----
+This repair starts from the successful DPIv2 12.x etaHEN 2.6B MetaInfo source tree.
+It addresses the two 12.20+ diagnostics reported by hardware testers:
+
+1) PHU Games Tools: "[X] unsupported fw (no phu_fw_offsets entry)"
+2) ShellUI KStuff pause/toggle: "Unsupported firmware" followed by
+   "Failed to get sysentvec address, aborting..."
+
+Source grounding
+----------------
+The exact firmware data comes from the bundled user-supplied upstream
+kstuff-lite 1.10 source archive:
+
+  ThirdParty/kstuff-lite-1.10-UPSTREAM-USER-SUPPLIED/kstuff-lite-1.10.zip
+
+For 12.00, 12.02, 12.20, 12.40, 12.60 and 12.70 it reports the same
+PHU/KStuff-pause fields:
+
+  allproc        = 0x2885E00
+  sysentvec      = 0xDCC978
+  sysentvec_ps4  = 0xDCCAF0
+  p_sysent       = 0xA08
+
+The existing R7.4 kstuff-toggle 0.6 source reference independently contains
+these sysentvec values through 12.60. KStuff Lite 1.10 extends that verified
+same pair to 12.70.
+
+Repair A — PHU overlay
+----------------------
+The original PHU ELF is preserved byte-exact as:
+
+  Source Code/daemon/assets/pizza_overlay_phu_original.elf
+  SHA256 8e20deefb9100705be8352dc6acb47241c6a044b93dc3f578f93c424789b2622
+
+Its existing 12.00 firmware-table entry already contains the exact KStuff 1.10
+allproc/sysentvec/sysentvec_ps4 values above, but its firmware range stops at:
+
+  min = 0x12000000
+  max = 0x1200FFFF
+
+A runtime derivative is created as:
+
+  Source Code/daemon/assets/pizza_overlay_phu_fw1220plus.elf
+  SHA256 af930375e1be960254ce2ac70fbd29230b9f67937cf69bca8b66520371bdbb3b
+
+The 4-byte max-firmware field at file offset 0x656C4 is rewritten from
+0x1200FFFF to 0x1270FFFF; because of little-endian encoding only byte 0x656C6
+changes in the resulting ELF. The daemon embeds
+this derivative while retaining the original ELF for audit/reproducibility.
+
+Intended tested firmware IDs in that family are:
+12.00, 12.02, 12.20, 12.40, 12.60 and 12.70.
+
+Repair B — KStuff pause/toggle
+------------------------------
+Source Code/shellui/src/HookFunctions.cpp already advertised 11.x and 12.x as
+supported in pizzahen_kstuff_pause_supported(), but the actual
+pause_resume_kstuff() resolver stopped at 10.60. This caused the two exact
+notifications seen on 12.20+.
+
+The missing source-grounded cases are restored:
+
+  11.00 / 11.20 : sysentvec 0xDCBC78, sysentvec_ps4 0xDCBDF0
+  11.40 / 11.60 : sysentvec 0xDCBC98, sysentvec_ps4 0xDCBE10
+  12.00 / 12.02 / 12.20 / 12.40 / 12.60 / 12.70:
+                  sysentvec 0xDCC978, sysentvec_ps4 0xDCCAF0
+
+No KStuff Lite 1.10 payload bytes are modified.
+No DPIv2 code is modified by this repair.
+No Onion Debug Services routing/fingerprint code is modified by this repair.
+
+Validation status
+-----------------
+Static/source gates can validate the table values, binary delta and frozen
+DPIv2/Onion/KStuff inputs. Hardware behavior remains UNCONFIRMED until tested.

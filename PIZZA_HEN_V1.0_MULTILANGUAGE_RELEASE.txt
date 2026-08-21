@@ -1,0 +1,57 @@
+PIZZA HEN v1.0 — MULTILANGUAGE RELEASE
+
+BASELINE
+- Runtime base: R7.6.3 HIDDEN LEGACY TOOLBOX HOSTS RESTORE (hardware-PASS, user confirmed).
+- This release adds only the multilingual presentation/locale handoff layer plus release naming/tests.
+- No service, KStuff, ShadowMount, scanner, Payload Manager, Package Installer, Fan, Klog, Overlay, Cheats or Debug routing logic is intentionally changed.
+
+LANGUAGE POLICY
+- PIZZA HEN follows the PS5 WebView/OS locale automatically.
+- No manual PIZZA HEN language selector.
+- Locale is normalized to one of the 31 PS5 console languages and persisted to /data and /user/data runtime locale files.
+- Debug Services reads the persisted locale before generating native ShellUI XML.
+- Arabic WebView UI uses RTL direction.
+- Unsupported/unrecognized locale falls back to en-US.
+
+SUPPORTED CONSOLE LANGUAGES (31)
+- Arabic
+- Chinese (Simplified)
+- Chinese (Traditional)
+- Czech
+- Danish
+- Dutch
+- English (UK)
+- English (US)
+- Finnish
+- French (Canada)
+- French (France)
+- German
+- Greek
+- Hungarian
+- Indonesian
+- Italian
+- Japanese
+- Korean
+- Norwegian
+- Polish
+- Portuguese (Brazil)
+- Portuguese (Portugal)
+- Romanian
+- Russian
+- Spanish (Latin America)
+- Spanish (Spain)
+- Swedish
+- Thai
+- Turkish
+- Ukrainian
+- Vietnamese
+
+VALIDATION
+- Declared static build gates: PASS (22/22).
+- R7.7 multilingual gate: PASS.
+- Toolbox JavaScript syntax: PASS.
+- Debug launcher JavaScript syntax: PASS.
+- Shortcut JSON parse: PASS.
+- Native i18n C++ helper syntax under clang++ -Wall -Wextra -Werror: PASS.
+- Native sample localization: it-IT PASS; ar-SA PASS.
+- Hardware validation of automatic locale detection/handoff: REQUIRED before calling multilingual v1.0 hardware-PASS.

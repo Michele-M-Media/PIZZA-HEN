@@ -32,7 +32,7 @@ ok('APPINST_TERMINATE', 'sceAppInstUtilTerminate();' in boot)
 ok('MEDIA_LEGACY_CATEGORY_MIGRATION', 'shortcut_param_is_legacy_non_media' in boot and 'sceAppInstUtilAppUnInstall(title_id)' in boot)
 ok('BROWSER_TOOLBOX_MODE_MARKER', 'browser_toolbox_mode' in boot and '/data/PIZZA_HEN/runtime/browser_toolbox_mode' in boot)
 ok('MEDIA_TILE_BEFORE_DAEMONS', boot.find('install_pizzahen_toolbox_shortcut()') < boot.find('Starting Utility etaHEN services'))
-ok('BOOT_AUTO_SHELLUI_DISABLED_IN_BROWSER_MODE', 'global_conf.toolbox_auto_start = false;' in daemon_main and 'browser_toolbox_mode' in daemon_main)
+ok('BOOT_BROWSER_UI_WITH_TOOLBOX_HOOK_PRELOAD', 'global_conf.toolbox_auto_start = false;' in daemon_main and 'browser_toolbox_mode' in daemon_main and 'cmd_preload_toolbox_hooks()' in daemon_main)
 
 start=daemon_msg.find('bool cmd_enable_toolbox()')
 end=daemon_msg.find('void handleIPC', start)

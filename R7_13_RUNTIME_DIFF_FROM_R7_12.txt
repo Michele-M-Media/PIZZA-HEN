@@ -1,0 +1,25 @@
+PIZZA HEN R7.13 - runtime source diff from R7.12
+
+--- "/mnt/data/r712_compare/PIZZA-HEN-v1.0-MULTILANGUAGE-CHEATRUNNER-DPIV2-12X-ETAHEN26B-PHU-KSTUFF-FW1220-REPAIR/Source Code/shellui/src/HookFunctions.cpp"	2026-08-20 21:17:44.000000000 +0000
++++ "/mnt/data/r713_work/PIZZA-HEN-v1.0-MULTILANGUAGE-CHEATRUNNER-DPIV2-12X-ETAHEN26B-PHU-KSTUFF-FW1220-CHEATRUNNER-GAME-OPTIONS-SHORTCUT/Source Code/shellui/src/HookFunctions.cpp"	2026-08-20 21:40:02.179466610 +0000
+@@ -3817,8 +3817,18 @@
+        return;
+     }
+ #endif
+-    // PIZZA HEN v1.0: legacy game-options cheat replacement retired.
+-    // MENU_ID_CHECK_PATCH now falls through untouched; CheatRunner lives only in Toolbox.
++    // PIZZA HEN R7.13: one simple Game Options shortcut to the integrated
++    // CheatRunner page. Reuse the existing OptionMenu/createJson slot only:
++    // no new hook, preload, backend, lifecycle or auto-injection is introduced.
++    if(id_str == "MENU_ID_CHECK_PATCH") {
++        createJson(inst, array,
++                   mono_string_new(Root_Domain, "MENU_ID_CHEATRUNNER"),
++                   mono_string_new(Root_Domain, "CheatRunner"),
++                   mono_string_new(Root_Domain,
++                       "http://127.0.0.1:8080/fs/data/PIZZA_HEN/ui/toolbox-launcher.html#cheats"),
++                   actionId, nullptr, subMenu, enable);
++        return;
++    }
+ 
+     if(id_str == "MENU_ID_INTELLECTUAL_PROPERTY_NOTICES"){
+         std::string uri = "psappinst:pat-uninstall?titleid=" + current_menu_tid;

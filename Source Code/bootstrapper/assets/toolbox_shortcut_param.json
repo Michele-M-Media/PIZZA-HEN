@@ -4,7 +4,97 @@
     "deeplinkUri": "http://127.0.0.1:8080/fs/data/PIZZA_HEN/ui/toolbox-launcher.html",
     "localizedParameters": {
         "defaultLanguage": "en-US",
+        "ar-SA": {
+            "titleName": "PIZZA HEN Toolbox"
+        },
+        "zh-Hans": {
+            "titleName": "PIZZA HEN Toolbox"
+        },
+        "zh-Hant": {
+            "titleName": "PIZZA HEN Toolbox"
+        },
+        "cs-CZ": {
+            "titleName": "PIZZA HEN Toolbox"
+        },
+        "da-DK": {
+            "titleName": "PIZZA HEN Toolbox"
+        },
+        "nl-NL": {
+            "titleName": "PIZZA HEN Toolbox"
+        },
+        "en-GB": {
+            "titleName": "PIZZA HEN Toolbox"
+        },
         "en-US": {
+            "titleName": "PIZZA HEN Toolbox"
+        },
+        "fi-FI": {
+            "titleName": "PIZZA HEN Toolbox"
+        },
+        "fr-CA": {
+            "titleName": "PIZZA HEN Toolbox"
+        },
+        "fr-FR": {
+            "titleName": "PIZZA HEN Toolbox"
+        },
+        "de-DE": {
+            "titleName": "PIZZA HEN Toolbox"
+        },
+        "el-GR": {
+            "titleName": "PIZZA HEN Toolbox"
+        },
+        "hu-HU": {
+            "titleName": "PIZZA HEN Toolbox"
+        },
+        "id-ID": {
+            "titleName": "PIZZA HEN Toolbox"
+        },
+        "it-IT": {
+            "titleName": "PIZZA HEN Toolbox"
+        },
+        "ja-JP": {
+            "titleName": "PIZZA HEN Toolbox"
+        },
+        "ko-KR": {
+            "titleName": "PIZZA HEN Toolbox"
+        },
+        "no-NO": {
+            "titleName": "PIZZA HEN Toolbox"
+        },
+        "pl-PL": {
+            "titleName": "PIZZA HEN Toolbox"
+        },
+        "pt-BR": {
+            "titleName": "PIZZA HEN Toolbox"
+        },
+        "pt-PT": {
+            "titleName": "PIZZA HEN Toolbox"
+        },
+        "ro-RO": {
+            "titleName": "PIZZA HEN Toolbox"
+        },
+        "ru-RU": {
+            "titleName": "PIZZA HEN Toolbox"
+        },
+        "es-419": {
+            "titleName": "PIZZA HEN Toolbox"
+        },
+        "es-ES": {
+            "titleName": "PIZZA HEN Toolbox"
+        },
+        "sv-SE": {
+            "titleName": "PIZZA HEN Toolbox"
+        },
+        "th-TH": {
+            "titleName": "PIZZA HEN Toolbox"
+        },
+        "tr-TR": {
+            "titleName": "PIZZA HEN Toolbox"
+        },
+        "uk-UA": {
+            "titleName": "PIZZA HEN Toolbox"
+        },
+        "vi-VN": {
             "titleName": "PIZZA HEN Toolbox"
         }
     }

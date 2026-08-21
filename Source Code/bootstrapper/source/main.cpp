@@ -85,6 +85,8 @@ along with this program; see the file COPYING. If not, see
  extern const unsigned int selector_action_size;
  extern uint8_t toolbox_action_start[];
  extern const unsigned int toolbox_action_size;
+ extern uint8_t toolbox_api_start[];
+ extern const unsigned int toolbox_api_size;
  extern uint8_t shadowmount_start[];
  extern const unsigned int shadowmount_size;
  extern uint8_t ftpsrv_start[];
@@ -101,6 +103,10 @@ along with this program; see the file COPYING. If not, see
  extern const unsigned int toolbox_shortcut_param_size;
  extern uint8_t toolbox_launcher_html_start[];
  extern const unsigned int toolbox_launcher_html_size;
+ extern uint8_t debug_services_shortcut_param_start[];
+ extern const unsigned int debug_services_shortcut_param_size;
+ extern uint8_t debug_services_launcher_html_start[];
+ extern const unsigned int debug_services_launcher_html_size;
 
  int sceAppInstUtilInitialize(void);
  int sceAppInstUtilTerminate(void);
@@ -557,6 +563,105 @@ done:
       return rc;
   }
 
+  // R3: second Media tile. The Debug Services tile does not route through the
+  // latest Toolbox UI. It opens a byte-exact copy of the PIZZA HEN v0.1
+  // launcher page, which invokes the original pizzahen-toolbox-open.elf helper.
+  static void debug_services_tile_status(const char *stage, int rc) {
+      mkdir("/data/PIZZA_HEN/runtime", 0777);
+      char status[256] = {0};
+      int n = snprintf(status, sizeof(status),
+                       "stage=%s\nrc=0x%08X\ntitleId=PZHN00002\ncategory=65536\ntitleIdFormat=AAAA99999\n",
+                       stage ? stage : "unknown", (unsigned int)rc);
+      if (n > 0)
+          write_blob_file("/data/PIZZA_HEN/runtime/debug_services_tile_status.txt",
+                          status, (size_t)n, 0666);
+  }
+
+  static int install_pizzahen_debug_services_shortcut(void) {
+      static const char *title_id = "PZHN00002";
+      static const char *app_dir = "/user/app/PZHN00002";
+      static const char *sys_dir = "/user/app/PZHN00002/sce_sys";
+      static const char *param_path = "/user/app/PZHN00002/sce_sys/param.json";
+      static const char *icon_path = "/user/app/PZHN00002/sce_sys/icon0.png";
+      static const char *registered_marker =
+          "/user/app/PZHN00002/.pizzahen_debug_services_registered";
+
+      bool files_need_update = !if_exists(app_dir) ||
+          shortcut_needs_update(param_path, debug_services_shortcut_param_start,
+                                debug_services_shortcut_param_size) ||
+          shortcut_needs_update(icon_path, toolbox_shortcut_icon_start,
+                                toolbox_shortcut_icon_size);
+      bool registration_needed = !if_exists(registered_marker);
+
+      if (!files_need_update && !registration_needed) {
+          ui_trace("PIZZA HEN TD0: Debug Services Media tile files + registration marker current");
+          debug_services_tile_status("already_registered", 0);
+          return 0;
+      }
+
+      prepare_media_tile_services();
+      int rc = sceAppInstUtilInitialize();
+      if (rc != 0) {
+          ui_trace("PIZZA HEN TD1: sceAppInstUtilInitialize rc=0x%X", rc);
+          unlink(registered_marker);
+          debug_services_tile_status("appinst_init_failed", rc);
+          return rc;
+      }
+
+      mkdir("/user/app", 0755);
+      if (mkdir(app_dir, 0755) != 0 && errno != EEXIST) {
+          rc = -1;
+          debug_services_tile_status("mkdir_app_failed", errno);
+          goto done_debug_services;
+      }
+      if (mkdir(sys_dir, 0755) != 0 && errno != EEXIST) {
+          rc = -1;
+          debug_services_tile_status("mkdir_sce_sys_failed", errno);
+          goto done_debug_services;
+      }
+
+      if (files_need_update) {
+          if (!write_blob_file(param_path, debug_services_shortcut_param_start,
+                               debug_services_shortcut_param_size, 0644) ||
+              !write_blob_file(icon_path, toolbox_shortcut_icon_start,
+                               toolbox_shortcut_icon_size, 0644)) {
+              ui_trace("PIZZA HEN TD2: unable to write Debug Services Media tile assets");
+              rc = -1;
+              debug_services_tile_status("asset_write_failed", rc);
+              goto done_debug_services;
+          }
+      }
+
+      {
+          int (*sceAppInstUtilAppInstallTitleDir)(const char *, const char *, void *) = nullptr;
+          uint32_t handle = 0;
+          if (!kernel_dynlib_handle(-1, "libSceAppInstUtil.sprx", &handle)) {
+              sceAppInstUtilAppInstallTitleDir =
+                  reinterpret_cast<int (*)(const char *, const char *, void *)>(
+                      kernel_dynlib_resolve(-1, handle, "Wudg3Xe3heE"));
+          }
+          if (sceAppInstUtilAppInstallTitleDir)
+              rc = sceAppInstUtilAppInstallTitleDir(title_id, "/user/app/", nullptr);
+          else
+              rc = sceAppInstUtilAppInstallAll(nullptr);
+      }
+
+      if (rc != 0) {
+          unlink(registered_marker);
+          ui_trace("PIZZA HEN TD3: Debug Services Media tile registration rc=0x%X", rc);
+          debug_services_tile_status("registration_failed", rc);
+      } else {
+          static const char marker[] = "PIZZA_HEN_DEBUG_SERVICES_MEDIA_TILE_V1\n";
+          write_blob_file(registered_marker, marker, sizeof(marker) - 1, 0644);
+          ui_trace("PIZZA HEN TD4: Debug Services Media tile installed/updated (PZHN00002)");
+          debug_services_tile_status("registered", 0);
+      }
+
+done_debug_services:
+      sceAppInstUtilTerminate();
+      return rc;
+  }
+
   static int read_kstuff_request(char *out, size_t out_size) {
       if (!out || out_size < 3) return 0;
       int fd = open("/data/PIZZA_HEN/runtime/kstuff_request.txt", O_RDONLY);
@@ -697,7 +802,7 @@ done:
     mkdir("/data/homebrew/000_PIZZA_HEN_KSTUFF_SELECTOR/sce_sys/", 0777);
 
     // FIX21: write the two frozen KStuff engines plus the websrv selector bridge.
-    write_blob_file("/data/PIZZA_HEN/engines/kstuff-lite-1.09.elf",
+    write_blob_file("/data/PIZZA_HEN/engines/kstuff-lite-1.10.elf",
                     &kstuff_start, kstuff_size, 0777);
     write_blob_file("/data/PIZZA_HEN/engines/kstuff-dr-1.2-test1.elf",
                     &kstuff_dr_start, kstuff_dr_size, 0777);
@@ -705,10 +810,14 @@ done:
                     &selector_action_start, selector_action_size, 0777);
     write_blob_file("/data/PIZZA_HEN/bin/pizzahen-toolbox-open.elf",
                     &toolbox_action_start, toolbox_action_size, 0777);
+    write_blob_file("/data/PIZZA_HEN/bin/pizzahen-api.elf",
+                    &toolbox_api_start, toolbox_api_size, 0777);
     write_blob_file("/data/PIZZA_HEN/ui/kstuff-selector.html",
                     &selector_html_start, selector_html_size, 0666);
     write_blob_file("/data/PIZZA_HEN/ui/toolbox-launcher.html",
                     &toolbox_launcher_html_start, toolbox_launcher_html_size, 0666);
+    write_blob_file("/data/PIZZA_HEN/ui/debug-services-launcher.html",
+                    &debug_services_launcher_html_start, debug_services_launcher_html_size, 0666);
     write_blob_file("/data/homebrew/000_PIZZA_HEN_KSTUFF_SELECTOR/homebrew.js",
                     &selector_js_start, selector_js_size, 0666);
     write_blob_file("/data/homebrew/000_PIZZA_HEN_KSTUFF_SELECTOR/sce_sys/icon0.png",
@@ -1559,20 +1668,8 @@ int main(void) {
 	sceNotificationSend(0xFE, true, &json_payload[0]);
   ui_trace("PIZZA HEN DIAG B8: welcome notification returned");
 
-  // FIX34: install/register the permanent Media tile EARLY, just like
-  // Payload Manager does at ELF startup. This is intentionally before the
-  // KStuff selector and before ShadowMount/FTP/ps5debug readiness gates, so
-  // a slow or failed later service can never prevent the icon from registering.
-  int early_media_tile_rc = install_pizzahen_toolbox_shortcut();
-  if (early_media_tile_rc != 0) {
-      // One immediate retry is safe because a failed registration leaves no
-      // success marker; matching files alone no longer suppress AppInstUtil.
-      usleep(250000);
-      early_media_tile_rc = install_pizzahen_toolbox_shortcut();
-  }
-  if (early_media_tile_rc != 0)
-      notify("PIZZA HEN Toolbox icon install failed (0x%X)\nStatus: /data/PIZZA_HEN/runtime/media_tile_status.txt",
-             early_media_tile_rc);
+  // R3: Media tiles are deliberately installed only after the KStuff selector
+  // has completed and the chosen engine is confirmed ready.
 
   ui_trace("PIZZA HEN DIAG B9: starting update protection");
   klog_printf("Unmounting /update forcefully ...");
@@ -1613,7 +1710,7 @@ int main(void) {
           return 0;
       }
 
-      ui_trace("PIZZA HEN W2: browser selector visible - choose Lite 1.09 or DR 1.2");
+      ui_trace("PIZZA HEN W2: browser selector visible - choose Lite 1.10 or DR 1.2");
       if (!wait_for_web_kstuff_request(choice, sizeof(choice))) {
           notify("PIZZA HEN W3-TIMEOUT: no KStuff selected");
           return 0;
@@ -1632,7 +1729,7 @@ int main(void) {
       } else {
           chosen = kstuff_start;
           chosen_size = kstuff_size;
-          chosen_name = "kstuff-lite-1.09";
+          chosen_name = "kstuff-lite-1.10";
       }
 
       if (chosen_size < 4 || chosen[0] != 0x7f || chosen[1] != 'E' ||
@@ -1659,6 +1756,29 @@ int main(void) {
                       choice, strlen(choice), 0666);
       ui_trace("PIZZA HEN W5: %s ready", chosen_name);
   }
+
+  // R3: user-selected KStuff is ready. Register both independent Media entries now.
+  // PZHN00001 = latest PIZZA HEN Toolbox.
+  // PZHN00002 = Debug Services using the original v0.1 launcher/helper pipeline.
+  int toolbox_tile_rc = install_pizzahen_toolbox_shortcut();
+  if (toolbox_tile_rc != 0) {
+      usleep(250000);
+      toolbox_tile_rc = install_pizzahen_toolbox_shortcut();
+  }
+  if (toolbox_tile_rc != 0)
+      notify("PIZZA HEN Toolbox icon install failed (0x%X)\nStatus: /data/PIZZA_HEN/runtime/media_tile_status.txt",
+             toolbox_tile_rc);
+
+  int debug_services_tile_rc = install_pizzahen_debug_services_shortcut();
+  if (debug_services_tile_rc != 0) {
+      usleep(250000);
+      debug_services_tile_rc = install_pizzahen_debug_services_shortcut();
+  }
+  if (debug_services_tile_rc != 0)
+      notify("Debug Services icon install failed (0x%X)\nStatus: /data/PIZZA_HEN/runtime/debug_services_tile_status.txt",
+             debug_services_tile_rc);
+
+  ui_trace("PIZZA HEN TDUAL: Media tiles ready: PZHN00001 Toolbox + PZHN00002 Debug Services");
 
   ui_trace("PIZZA HEN S0: starting pristine ShadowMountPlus 1.6beta16");
   if (shadowmount_size < 4 || shadowmount_start[0] != 0x7f ||

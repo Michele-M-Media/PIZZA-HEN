@@ -440,6 +440,33 @@ bool is_elf_file(const void *buffer, size_t size)
   return memcmp(buffer, elf_magic, 4) == 0;
 }
 
+// FIX70.24: generic ELF files do not contain etaHEN's CustomPluginHeader.
+// etaHEN historically read titleID out of raw ELF bytes, which makes PID
+// tracking non-deterministic. PIZZA HEN gives each payload a stable identity
+// derived from its absolute path while preserving the .plugin ABI unchanged.
+uint32_t pizzahen_path_hash(const char *path)
+{
+  uint32_t h = 2166136261u;
+  if (!path) return h;
+  for (const unsigned char *p = (const unsigned char *)path; *p; ++p) {
+    h ^= *p;
+    h *= 16777619u;
+  }
+  return h;
+}
+
+void pizzahen_payload_pid_path(const char *path, char *out, size_t out_size)
+{
+  if (!out || out_size == 0) return;
+  snprintf(out, out_size, "/system_tmp/PZHNE%08X.PID", pizzahen_path_hash(path));
+}
+
+void pizzahen_payload_proc_name(const char *path, char *out, size_t out_size)
+{
+  if (!out || out_size == 0) return;
+  snprintf(out, out_size, "PZHNE%08X", pizzahen_path_hash(path));
+}
+
 bool load_plugin(const char *path)
 {
   int fd = open(path, O_RDONLY);
@@ -491,7 +518,9 @@ bool load_plugin(const char *path)
     }
 
     char pbuf[256];
-    snprintf(pbuf, sizeof(pbuf), "/system_tmp/%s.PID", header->titleID);
+    char procname[32];
+    pizzahen_payload_pid_path(path, pbuf, sizeof(pbuf));
+    pizzahen_payload_proc_name(path, procname, sizeof(procname));
 
     pid_t pid = -1;
     int f = open(pbuf, O_RDONLY);
@@ -512,7 +541,7 @@ bool load_plugin(const char *path)
       char name[32];
       if (sceKernelGetProcessName(pid, name) < 0)
       {
-        etaHEN_log("Stale plugin PID file detected for %s, removing", header->titleID);
+        etaHEN_log("Stale payload PID file detected for %s, removing", filename);
         unlink(pbuf);
         pid = -1;
       }
@@ -520,13 +549,13 @@ bool load_plugin(const char *path)
 
     if (pid > 0)
     {
-      etaHEN_log("killing pid %d (plugin: %s)", pid, header->titleID);
+      etaHEN_log("killing pid %d (payload: %s)", pid, filename);
       kill(pid, SIGKILL);
       unlink(pbuf);
     }
 
     etaHEN_log("loading elf %s", filename);
-    pid = elfldr_spawn("/", STDOUT_FILENO, buf, header->titleID);
+    pid = elfldr_spawn("/", STDOUT_FILENO, buf, procname);
 
     if (pid >= 0)
       etaHEN_log("  Launched!");

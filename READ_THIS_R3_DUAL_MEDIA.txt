@@ -1,0 +1,17 @@
+PIZZA HEN R3 - DUAL MEDIA AFTER KSTUFF
+
+Obiettivo hardware di questo ramo:
+1. Avvio PIZZA HEN.
+2. Selettore KStuff: Lite 1.10 oppure DR 1.2.
+3. Solo dopo che il KStuff scelto risulta ready vengono registrate due tile Media indipendenti:
+   - PZHN00001 = PIZZA HEN Toolbox (Toolbox moderna invariata)
+   - PZHN00002 = Debug Services
+4. Debug Services apre /data/PIZZA_HEN/ui/debug-services-launcher.html.
+5. debug-services-launcher.html e' byte-identico al toolbox_launcher.html della PIZZA HEN v0.1.
+6. Quel launcher richiama /data/PIZZA_HEN/bin/pizzahen-toolbox-open.elf via /hbldr, cioe' il ponte originale v0.1.
+
+Il runtime v0.1 congelato (daemon/util/shellui/toolbox_action) non viene modificato da questo ramo.
+La Toolbox moderna PZHN00001 resta separata.
+
+Build Windows/WSL:
+RUN_BUILD_R3_DUAL_MEDIA_KSTUFF110.bat

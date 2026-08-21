@@ -15,6 +15,9 @@ along with this program; see the file COPYING. If not, see
 <http://www.gnu.org/licenses/>.  */
 
 #include "HookedFuncs.hpp"
+#include "debug_services_route.hpp"
+#include "hook_lifecycle.hpp"
+#include "settings_bundle_patch.hpp"
 #include "RemotePlay.h"
 #include "Detour.h"
 #include "ipc.hpp"
@@ -259,6 +262,9 @@ int sceNetSend(int sockfd, const void *buf, size_t len, int flags);
 }
 
 MonoString *GetString_Hook(MonoObject *Instance, MonoString *str) {
+    if (!shellui_hooks_are_ready())
+      return oGetString ? oGetString(Instance, str) : str;
+
     if (!str || !Instance) {
       shellui_log("GetString_Hook: Invalid Parameters");
       return nullptr;
@@ -327,24 +333,10 @@ error:
 }
 
 void patch_bundle_strings(unsigned char* buffer, int* size_ptr, int actual_size) {
-  if (!buffer || !size_ptr) {
-      return;
-  }
-  
-  // Replace "Debug Settings" with "PIZZA HEN Toolbox"
-  int count = replace_all(buffer, size_ptr, actual_size, "Debug Settings", "PIZZA HEN Toolbox");
-#if SHELL_DEBUG == 1
-  if (count > 0) {
-      shellui_log("patch_bundle_strings: Replaced %d occurrences of 'Debug Settings' with 'PIZZA HEN Toolbox'", count);
-  } else {
-      shellui_log("patch_bundle_strings: No occurrences of 'Debug Settings' found");
-  }
-#else
-  (void)count;
-#endif
-  
-  // Replace "icon_setting" with "pizzahen_sicon"
-  replace_all(buffer, size_ptr, actual_size, "icon_setting", "pizzahen_sicon");
+  // OnionHEN 0.0.10: patch only a fingerprint-validated NPXS40008 bundle,
+  // in place and at equal length. Never globally rewrite icon_setting.
+  const int size = (size_ptr && *size_ptr > 0) ? *size_ptr : actual_size;
+  patch_settings_bundle(buffer, size);
 }
 
 int ioctl_hook(int fd, unsigned long request, void *argp) {
@@ -352,7 +344,7 @@ int ioctl_hook(int fd, unsigned long request, void *argp) {
   const unsigned long  DECRYPT_RNPS_BUNDLE = 0xC0105203; // RNPS request code for ioctl
 
   int ret = __syscall(IOCTL_SYSCALL, fd, request, argp);
-  if (ret == 0 && request == DECRYPT_RNPS_BUNDLE) {
+  if (shellui_hooks_are_ready() && ret == 0 && request == DECRYPT_RNPS_BUNDLE) {
       ioctl_C0105203_args *args = (ioctl_C0105203_args *)argp;
 #if SHELL_DEBUG == 1
       shellui_log("ioctl_hook called with fd: %d, request: 0x%X, argp: %p", fd, request, argp);
@@ -376,7 +368,8 @@ void CallDecrypt(unsigned char* bundleData, int bundleOffset, int bundleSize, in
   }
   
   CallDecrypt_orig(bundleData, bundleOffset, bundleSize, payloadOffset, realPayloadSize);
-  patch_bundle_strings(bundleData, realPayloadSize, *realPayloadSize);
+  if (shellui_hooks_are_ready())
+    patch_bundle_strings(bundleData, realPayloadSize, *realPayloadSize);
 }
 
 
@@ -485,6 +478,34 @@ void pause_resume_kstuff(KstuffPauseStatus opt, bool notify_user)
       sysentvec_ps4 = KERNEL_ADDRESS_DATA_BASE + 0xdba850;
     success = true;
     break;
+
+  /* kstuff-toggle 0.6 + bundled kstuff-lite 1.10 firmware tables.
+   * Keep the actual pause/resume resolver aligned with the capability gate
+   * below: 11.x/12.x were advertised as supported but were missing here. */
+  case 0x11000000:
+  case 0x11200000:
+      sysentvec = KERNEL_ADDRESS_DATA_BASE + 0xdcbc78;
+      sysentvec_ps4 = KERNEL_ADDRESS_DATA_BASE + 0xdcbdf0;
+    success = true;
+    break;
+
+  case 0x11400000:
+  case 0x11600000:
+      sysentvec = KERNEL_ADDRESS_DATA_BASE + 0xdcbc98;
+      sysentvec_ps4 = KERNEL_ADDRESS_DATA_BASE + 0xdcbe10;
+    success = true;
+    break;
+
+  case 0x12000000:
+  case 0x12020000:
+  case 0x12200000:
+  case 0x12400000:
+  case 0x12600000:
+  case 0x12700000:
+      sysentvec = KERNEL_ADDRESS_DATA_BASE + 0xdcc978;
+      sysentvec_ps4 = KERNEL_ADDRESS_DATA_BASE + 0xdccaf0;
+    success = true;
+    break;
  
   default:
     notify("Unsupported firmware");
@@ -560,6 +581,212 @@ void pause_resume_kstuff(KstuffPauseStatus opt, bool notify_user)
   }
 
 }
+
+// FIX70.24 - live control plane for the owned web Toolbox.
+// This channel is intentionally settings/overlay/KStuff-only. Package install
+// remains exclusively on the hardware-PASS websrv /hbldr -> PKGInstall route.
+static const char *PIZZAHEN_WEB_CONTROL_REQUEST = "/system_tmp/pizzahen_web_control.request";
+static const char *PIZZAHEN_WEB_CONTROL_ACK = "/system_tmp/pizzahen_web_control.ack";
+
+extern bool g_pizzahen_shell_service_mode;
+extern bool g_pizzahen_overlay_apply_requested;
+
+static const char *PIZZAHEN_WEB_CONTROL_ACK_TMP = "/system_tmp/pizzahen_web_control.ack.tmp";
+
+static bool pizzahen_kstuff_pause_supported() {
+  switch(kernel_get_fw_version() & 0xffff0000) {
+    case 0x3000000: case 0x3100000: case 0x3200000: case 0x3210000:
+    case 0x4000000: case 0x4020000: case 0x4030000: case 0x4500000: case 0x4510000:
+    case 0x5000000: case 0x5020000: case 0x5100000: case 0x5500000:
+    case 0x6000000: case 0x6020000: case 0x6500000:
+    case 0x7000000: case 0x7010000: case 0x7200000: case 0x7400000: case 0x7600000: case 0x7610000:
+    case 0x8000000: case 0x8200000: case 0x8400000: case 0x8600000:
+    case 0x9000000: case 0x9050000: case 0x9200000: case 0x9400000: case 0x9600000:
+    case 0x10000000: case 0x10010000: case 0x10200000: case 0x10400000: case 0x10600000:
+    case 0x11000000: case 0x11200000: case 0x11400000: case 0x11600000:
+    case 0x12000000: case 0x12020000: case 0x12200000: case 0x12400000: case 0x12600000: case 0x12700000:
+      return true;
+    default: return false;
+  }
+}
+static std::string pzh_trim(const std::string &v) { size_t a=0,b=v.size();while(a<b&&(v[a]==' '||v[a]=='\r'||v[a]=='\n'||v[a]=='\t'))a++;while(b>a&&(v[b-1]==' '||v[b-1]=='\r'||v[b-1]=='\n'||v[b-1]=='\t'))b--;return v.substr(a,b-a); }
+static void pizzahen_web_ack(const std::string &token, bool ok, const char *detail) {
+  FILE *f=fopen(PIZZAHEN_WEB_CONTROL_ACK_TMP,"w"); if(!f)return;
+  fprintf(f,"token=%s\nstatus=%s\ndetail=%s\n",token.c_str(),ok?"ok":"fail",detail?detail:""); fflush(f); fsync(fileno(f)); fclose(f);
+  rename(PIZZAHEN_WEB_CONTROL_ACK_TMP,PIZZAHEN_WEB_CONTROL_ACK);
+}
+extern std::string remote_play_info;
+bool Try_connect_to_host(int port);
+void* switch_to_lite(void*);
+void* launch_thr(void*);
+static void pizzahen_recreate_active_overlays() {
+  if(global_conf.overlay_cpu){RemoveGameWidget(REMOVE_CPU_OVERLAY);CreateGameWidget(CREATE_CPU_OVERLAY);}
+  if(global_conf.overlay_ram){RemoveGameWidget(REMOVE_RAM_OVERLAY);CreateGameWidget(CREATE_RAM_OVERLAY);}
+  if(global_conf.overlay_gpu){RemoveGameWidget(REMOVE_GPU_OVERLAY);CreateGameWidget(CREATE_GPU_OVERLAY);}
+  if(global_conf.overlay_fps){RemoveGameWidget(REMOVE_FPS_OVERLAY);CreateGameWidget(CREATE_FPS_OVERLAY);}
+  if(global_conf.overlay_ip){RemoveGameWidget(REMOVE_IP_OVERLAY);CreateGameWidget(CREATE_IP_OVERLAY);}
+}
+
+static int pizzahen_share_gesture_kind(const char *key, int value) {
+  if (!strcmp(key, "Cheats_shortcut_opt")) {
+    if (value == CHEATS_SINGLE_SHARE) return 1;
+    if (value == CHEATS_LONG_SHARE) return 2;
+  } else if (!strcmp(key, "Toolbox_shortcut_opt")) {
+    if (value == TOOLBOX_SINGLE_SHARE) return 1;
+    if (value == TOOLBOX_LONG_SHARE) return 2;
+  } else if (!strcmp(key, "Games_shortcut_opt")) {
+    if (value == GAMES_SINGLE_SHARE) return 1;
+    if (value == GAMES_LONG_SHARE) return 2;
+  } else if (!strcmp(key, "Kstuff_shortcut_opt")) {
+    if (value == KSTUFF_SINGLE_SHARE) return 1;
+    if (value == KSTUFF_LONG_SHARE) return 2;
+  }
+  return 0;
+}
+
+static bool pizzahen_share_shortcut_conflict(const char *key, int value) {
+  const int wanted = pizzahen_share_gesture_kind(key, value);
+  if (!wanted) return false;
+  if (strcmp(key, "Cheats_shortcut_opt") && pizzahen_share_gesture_kind("Cheats_shortcut_opt", global_conf.cheats_shortcut_opt) == wanted) return true;
+  if (strcmp(key, "Toolbox_shortcut_opt") && pizzahen_share_gesture_kind("Toolbox_shortcut_opt", global_conf.toolbox_shortcut_opt) == wanted) return true;
+  if (strcmp(key, "Games_shortcut_opt") && pizzahen_share_gesture_kind("Games_shortcut_opt", global_conf.games_shortcut_opt) == wanted) return true;
+  if (strcmp(key, "Kstuff_shortcut_opt") && pizzahen_share_gesture_kind("Kstuff_shortcut_opt", global_conf.kstuff_shortcut_opt) == wanted) return true;
+  return false;
+}
+
+void PizzahenServiceWebControl() {
+  FILE *f=fopen(PIZZAHEN_WEB_CONTROL_REQUEST,"r"); if(!f)return;
+  char line[256]; std::string token,command,key,value;
+  while(fgets(line,sizeof(line),f)){
+    std::string l=line; size_t p=l.find('='); if(p==std::string::npos)continue;
+    std::string k=pzh_trim(l.substr(0,p)),v=pzh_trim(l.substr(p+1));
+    if(k=="token")token=v; else if(k=="command")command=v; else if(k=="key")key=v; else if(k=="value")value=v;
+  }
+  fclose(f); unlink(PIZZAHEN_WEB_CONTROL_REQUEST);
+  if(token.empty()||command.empty()){pizzahen_web_ack(token,false,"malformed-control-request");return;}
+  const int iv=atoi(value.c_str());
+
+  /* etaHEN source: pause_resume_kstuff(mode,true). */
+  if(command=="kstuff_pause") {
+    if(iv<0||iv>3||!pizzahen_kstuff_pause_supported()){pizzahen_web_ack(token,false,"kstuff-pause-capability-unavailable");return;}
+    if (iv != global_conf.kstuff_pause_opt) {
+      global_conf.kstuff_pause_opt = iv;
+      pause_resume_kstuff((KstuffPauseStatus)global_conf.kstuff_pause_opt, true);
+    }
+    /* etaHEN treats the 4-mode pause selector as runtime state; SaveSettings()
+       does not serialize kstuff_pause_opt, so PIZZA does not invent persistence. */
+    pizzahen_web_ack(token,true,"kstuff-pause-applied"); return;
+  }
+  if(command=="remote_play_pin") {
+    std::string rp_xml; generate_remote_play_xml(rp_xml);
+    const bool ok=!remote_play_info.empty();
+    pizzahen_web_ack(token,ok,ok?"remote-play-pin-generated":"remote-play-pin-failed"); return;
+  }
+  if(command!="set"){pizzahen_web_ack(token,false,"unknown-control-command");return;}
+
+  bool known=true;
+  /* The branches below mirror etaHEN HookFunctions.cpp OnPress behavior. The
+   * only PIZZA adaptation is that service-only mode queues PUI mutations onto
+   * Application.Update instead of executing them from the websrv helper. */
+  if(key=="overlay_gpu") {
+    if(iv!=global_conf.overlay_gpu){
+      global_conf.overlay_gpu=iv!=0;
+      if(g_pizzahen_shell_service_mode) g_pizzahen_overlay_apply_requested=true;
+      else if(iv) CreateGameWidget(CREATE_GPU_OVERLAY); else RemoveGameWidget(REMOVE_GPU_OVERLAY);
+    }
+  } else if(key=="overlay_cpu") {
+    if(iv!=global_conf.overlay_cpu){
+      if(!iv && global_conf.all_cpu_usage){pizzahen_web_ack(token,false,"disable-all-cpu-usage-first");return;}
+      global_conf.overlay_cpu=iv!=0;
+      if(g_pizzahen_shell_service_mode) g_pizzahen_overlay_apply_requested=true;
+      else if(iv) CreateGameWidget(CREATE_CPU_OVERLAY); else RemoveGameWidget(REMOVE_CPU_OVERLAY);
+    }
+  } else if(key=="overlay_ram") {
+    if(iv!=global_conf.overlay_ram){global_conf.overlay_ram=iv!=0;if(g_pizzahen_shell_service_mode)g_pizzahen_overlay_apply_requested=true;else if(iv)CreateGameWidget(CREATE_RAM_OVERLAY);else RemoveGameWidget(REMOVE_RAM_OVERLAY);}
+  } else if(key=="overlay_fps") {
+    if(iv!=global_conf.overlay_fps){global_conf.overlay_fps=iv!=0;if(iv)touch_file("/system_tmp/fps_enabled");else unlink("/system_tmp/fps_enabled");if(g_pizzahen_shell_service_mode)g_pizzahen_overlay_apply_requested=true;else if(iv)CreateGameWidget(CREATE_FPS_OVERLAY);else RemoveGameWidget(REMOVE_FPS_OVERLAY);}
+  } else if(key=="overlay_ip") {
+    if(iv!=global_conf.overlay_ip){global_conf.overlay_ip=iv!=0;if(g_pizzahen_shell_service_mode)g_pizzahen_overlay_apply_requested=true;else if(iv)CreateGameWidget(CREATE_IP_OVERLAY);else RemoveGameWidget(REMOVE_IP_OVERLAY);}
+  } else if(key=="overlay_kstuff") {
+    if(iv!=global_conf.overlay_kstuff){global_conf.overlay_kstuff=iv!=0;if(!global_conf.overlay_kstuff&&global_conf.overlay_kstuff_active){RemoveGameWidget(REMOVE_KSTUFF_DISABLED);global_conf.overlay_kstuff_active=false;}}
+  } else if(key=="all_cpu_usage") {
+    if(iv!=global_conf.all_cpu_usage){if(!global_conf.overlay_cpu){pizzahen_web_ack(token,false,"enable-cpu-overlay-first");return;}global_conf.all_cpu_usage=iv!=0;}
+  } else if(key=="Overlay_pos") {
+    if(iv!=(int)global_conf.overlay_pos){
+      global_conf.overlay_pos=(overlay_positions)iv;
+      if(global_conf.overlay_pos==OVERLAY_POS_TOP_LEFT){global_conf.overlay_fps_x=10;global_conf.overlay_fps_y=10;global_conf.overlay_gpu_x=10;global_conf.overlay_gpu_y=35;global_conf.overlay_cpu_x=10;global_conf.overlay_cpu_y=60;global_conf.overlay_ram_x=10;global_conf.overlay_ram_y=85;global_conf.overlay_ip_x=10;global_conf.overlay_ip_y=110;}
+      else if(global_conf.overlay_pos==OVERLAY_POS_BOTTOM_LEFT){global_conf.overlay_ram_x=10;global_conf.overlay_ram_y=970;global_conf.overlay_cpu_x=10;global_conf.overlay_cpu_y=990;global_conf.overlay_gpu_x=10;global_conf.overlay_gpu_y=1010;global_conf.overlay_fps_x=10;global_conf.overlay_fps_y=1030;global_conf.overlay_ip_x=10;global_conf.overlay_ip_y=1050;}
+      else if(global_conf.overlay_pos==OVERLAY_POS_TOP_RIGHT){global_conf.overlay_fps_x=1720;global_conf.overlay_fps_y=10;global_conf.overlay_gpu_x=1720;global_conf.overlay_gpu_y=35;global_conf.overlay_cpu_x=1720;global_conf.overlay_cpu_y=60;global_conf.overlay_ram_x=1720;global_conf.overlay_ram_y=85;global_conf.overlay_ip_x=1670;global_conf.overlay_ip_y=110;}
+      else if(global_conf.overlay_pos==OVERLAY_POS_BOTTOM_RIGHT){global_conf.overlay_ram_x=1720;global_conf.overlay_ram_y=970;global_conf.overlay_cpu_x=1720;global_conf.overlay_cpu_y=990;global_conf.overlay_gpu_x=1720;global_conf.overlay_gpu_y=1010;global_conf.overlay_fps_x=1720;global_conf.overlay_fps_y=1030;global_conf.overlay_ip_x=1670;global_conf.overlay_ip_y=1050;}
+      if(g_pizzahen_shell_service_mode)g_pizzahen_overlay_apply_requested=true;else pizzahen_recreate_active_overlays();
+    }
+  } else if(key=="Display_tids") {
+    if(iv!=global_conf.display_tids){global_conf.display_tids=iv!=0;ReloadRNPSApp("NPXS40002");}
+  } else if(key=="etaHEN_Game_Options") {
+    global_conf.etaHEN_game_opts=iv!=0;
+  } else if(key=="Allow_data_in_sandbox") {
+    global_conf.allow_data_sandbox=iv!=0;
+  } else if(key=="ALLOW_FTP_DEV_ACCESS") {
+    global_conf.ftp_dev_access=iv!=0;
+  } else if(key=="StartOption") {
+    global_conf.start_option=iv;
+    global_conf.launch_itemzflow=false;
+  } else if(key=="Rest_Mode_Delay_Seconds") {
+    global_conf.rest_delay_seconds=(uint64_t)iv;
+  } else if(key=="Util_rest_kill") {
+    global_conf.util_rest_kill=iv!=0;
+  } else if(key=="Game_rest_kill") {
+    global_conf.game_rest_kill=iv!=0;
+  } else if(key=="toolbox_auto_start") {
+    global_conf.toolbox_auto_start=iv!=0;
+  } else if(key=="disable_toolbox_auto_start_for_rest_mode") {
+    global_conf.disable_toolbox_auto_start_for_rest_mode=iv!=0;
+  } else if(key=="APP_JB_Debug_Msg") {
+    global_conf.debug_app_jb_msg=iv!=0;
+  } else if(key=="enable_kstuff_on_close") {
+    global_conf.enable_kstuff_on_close=iv!=0;
+  } else if(key=="pause_kstuff_on_open") {
+    global_conf.pause_kstuff_on_open=iv!=0;
+  } else if(key=="pause_kstuff_on_open_secs") {
+    global_conf.pause_kstuff_on_open_secs=(unsigned long)iv;
+  } else if(key=="auto_eject_disc") {
+    global_conf.auto_eject_disc=iv!=0;
+  } else if(key=="LiteMode") {
+    if((iv!=0)!=global_conf.lite_mode){
+      pthread_t thr=0;
+      if(iv){
+        if(plugins_list.empty()){std::string xml;generate_plugin_xml(xml,true);}
+        for(const auto &plugin:plugins_list){int pid=sceSystemServiceGetAppId(plugin.tid.c_str());if(pid>0)IPC_Client::getInstance(false).ForceKillPID(pid);}
+        if(!Try_connect_to_host(9021)&&!IPC_Client::getInstance(true).Launch_Elfldr()){pizzahen_web_ack(token,false,"elfldr-required-for-lite");return;}
+        global_conf.lite_mode=true;
+        scePthreadCreate(&thr,NULL,switch_to_lite,NULL,"Switch to LITE thr");pthread_detach(thr);
+      }else{
+        if(!if_exists("/user/data/PIZZA_HEN/etaHEN.bin")){pizzahen_web_ack(token,false,"runtime-payload-required-to-exit-lite");return;}
+        global_conf.lite_mode=false;
+        scePthreadCreate(&thr,NULL,launch_thr,NULL,"Switch to Normal thr");pthread_detach(thr);
+      }
+    }
+  } else if(key=="Cheats_shortcut_opt") {
+    if (pizzahen_share_shortcut_conflict("Cheats_shortcut_opt", iv)) { pizzahen_web_ack(token,false,"share-shortcut-conflict"); return; }
+    global_conf.cheats_shortcut_opt=(Cheats_Shortcut)iv;
+  } else if(key=="Toolbox_shortcut_opt") {
+    if (pizzahen_share_shortcut_conflict("Toolbox_shortcut_opt", iv)) { pizzahen_web_ack(token,false,"share-shortcut-conflict"); return; }
+    global_conf.toolbox_shortcut_opt=(Toolbox_Shortcut)iv;
+  } else if(key=="Games_shortcut_opt") {
+    if (pizzahen_share_shortcut_conflict("Games_shortcut_opt", iv)) { pizzahen_web_ack(token,false,"share-shortcut-conflict"); return; }
+    global_conf.games_shortcut_opt=(Games_Shortcut)iv;
+  } else if(key=="Kstuff_shortcut_opt") {
+    if (pizzahen_share_shortcut_conflict("Kstuff_shortcut_opt", iv)) { pizzahen_web_ack(token,false,"share-shortcut-conflict"); return; }
+    global_conf.kstuff_shortcut_opt=(Kstuff_Shortcut)iv;
+  } else known=false;
+
+  if(!known){pizzahen_web_ack(token,false,"unsupported-shell-setting");return;}
+  if(!SaveSettings()){pizzahen_web_ack(token,false,"save-settings-failed");return;}
+  /* etaHEN OnPress sets reload_main_settings only for APP_JB_Debug_Msg. */
+  if(key=="APP_JB_Debug_Msg") IPC_Client::getInstance(false).Reload_Daemon_Settings();
+  pizzahen_web_ack(token,true,"etahen-source-handler-applied");
+}
+
 
 void* kstuff_pause_thread(void* arg){
     sleep(2);
@@ -1225,6 +1452,9 @@ static bool apply_pizzahen_itemzflow_theme() {
 
 int OnPress_Hook(MonoObject* Instance, MonoObject* element, MonoObject* e)
 {
+    if (!shellui_hooks_are_ready())
+        return oOnPress ? oOnPress(Instance, element, e) : 0;
+
     bool& FTP = global_conf.FTP;
     bool& Klog = global_conf.Klog;
     bool& DPI = global_conf.DPI;
@@ -2236,6 +2466,9 @@ int OnPress_Hook(MonoObject* Instance, MonoObject* element, MonoObject* e)
 extern std::string running_tid;
 MonoString * CxmlUri_Hook(MonoObject * Instance, MonoString * uri) {
 
+  if (!shellui_hooks_are_ready())
+    return CxmlUri ? CxmlUri(Instance, uri) : uri;
+
   if (!Instance || !uri) {
     #if SHELL_DEBUG==1 
     shellui_log("CxmlUri_Hook: args are null");
@@ -2281,10 +2514,216 @@ MonoString * CxmlUri_Hook(MonoObject * Instance, MonoString * uri) {
   }
   return CxmlUri(Instance, uri);
 }
+/* PIZZA HEN v1.0 multilingual native UI bridge.
+   Locale is written by the PS5 WebView launchers through toolbox_api locale-set.
+   No firmware-specific language offset or private registry identifier is used. */
+enum PhI18nKey {
+    PH_DEBUG_SERVICES,
+    PH_PACKAGE_INSTALLER,
+    PH_PLUGINS_PAYLOADS,
+    PH_CHEATS,
+    PH_SERVICES,
+    PH_SETTINGS,
+    PH_INFO,
+    PH_GAME_OVERLAY,
+    PH_KSTUFF_MENU,
+    PH_FAN_TARGET,
+    PH_RUNTIME_SYSTEM,
+    PH_OPEN_SOURCE_PROJECTS,
+    PH_GAME_MANAGER,
+    PH_BACK,
+    PH_HOME,
+    PH_SCAN,
+    PH_REFRESH,
+    PH_REPOSITORY,
+    PH_UPDATE,
+    PH_RELOAD,
+    PH_SYSTEM_OPTIONS,
+    PH_REST_MODE_OPTIONS,
+    PH_CONTROLLER_SHORTCUTS,
+    PH_EXTRAS,
+    PH_EXTERNAL_HDD,
+    PH_GAME_DUMPER,
+    PH_HOMEBREW_STORE,
+    PH_TARGET_TEMPERATURE,
+    PH_INSTALL,
+    PH_DELETE,
+    PH_LOADING,
+    PH_READY,
+    PH_ERROR,
+    PH_ON,
+    PH_OFF,
+    PH_START,
+    PH_STOP,
+    PH_AUTO_START,
+    PH_NONE,
+    PH_PAUSE,
+    PH_UNPAUSE,
+    PH_KEY_COUNT
+};
+struct PhLangRow { const char* code; const char* value[PH_KEY_COUNT]; };
+static const PhLangRow g_ph_langs[] = {
+    {"ar-SA", {"خدمات التصحيح", "مثبّت الحزم", "الإضافات / ملفات Payload ELF", "الغش", "الخدمات", "الإعدادات", "معلومات", "تراكب اللعبة", "قائمة KStuff", "هدف المروحة", "بيئة التشغيل / النظام", "مشاريع مفتوحة المصدر", "مدير الألعاب", "رجوع", "الرئيسية", "فحص", "تحديث", "المستودع", "تحديث", "إعادة تحميل", "خيارات النظام", "خيارات وضع السكون", "اختصارات وحدة التحكم", "إضافات", "قرص HDD خارجي", "تفريغ الألعاب", "متجر Homebrew", "درجة الحرارة المستهدفة", "تثبيت", "حذف", "جارٍ التحميل…", "جاهز", "خطأ", "ON", "OFF", "بدء", "إيقاف", "تشغيل تلقائي", "لا شيء", "إيقاف مؤقت", "استئناف"}},
+    {"zh-Hans", {"调试服务", "软件包安装器", "插件 / Payload ELF", "作弊", "服务", "设置", "信息", "游戏叠加层", "KStuff 菜单", "风扇目标", "运行时 / 系统", "开源项目", "游戏管理器", "返回", "主页", "扫描", "刷新", "仓库", "更新", "重新加载", "系统选项", "待机模式选项", "控制器快捷键", "其他", "外置硬盘", "游戏转储", "Homebrew Store", "目标温度", "安装", "删除", "加载中…", "就绪", "错误", "ON", "OFF", "启动", "停止", "自动启动", "无", "暂停", "继续"}},
+    {"zh-Hant", {"偵錯服務", "套件安裝程式", "外掛 / Payload ELF", "作弊", "服務", "設定", "資訊", "遊戲覆蓋層", "KStuff 選單", "風扇目標", "執行環境 / 系統", "開放原始碼專案", "遊戲管理器", "返回", "首頁", "掃描", "重新整理", "儲存庫", "更新", "重新載入", "系統選項", "待機模式選項", "控制器捷徑", "其他", "外接硬碟", "遊戲傾印", "Homebrew Store", "目標溫度", "安裝", "刪除", "載入中…", "就緒", "錯誤", "ON", "OFF", "啟動", "停止", "自動啟動", "無", "暫停", "繼續"}},
+    {"cs-CZ", {"Ladicí služby", "Instalátor balíčků", "Pluginy / Payload ELF", "Cheaty", "Služby", "Nastavení", "Informace", "Herní překryv", "Nabídka KStuff", "Cíl ventilátoru", "Runtime / Systém", "Open-source projekty", "Správce her", "ZPĚT", "DOMŮ", "SKENOVAT", "OBNOVIT", "Repozitář", "AKTUALIZOVAT", "NAČÍST ZNOVU", "Možnosti systému", "Možnosti režimu odpočinku", "Zkratky ovladače", "Doplňky", "Externí HDD", "Dumper her", "Homebrew Store", "Cílová teplota", "INSTALOVAT", "SMAZAT", "Načítání…", "Připraveno", "Chyba", "ON", "OFF", "SPUSTIT", "ZASTAVIT", "AUTOSTART", "Žádné", "Pozastavit", "Pokračovat"}},
+    {"da-DK", {"Fejlfindingstjenester", "Pakkeinstallation", "Plugins / Payload-ELF’er", "Cheats", "Tjenester", "Indstillinger", "Info", "Spil-overlay", "KStuff-menu", "Blæsermål", "Runtime / System", "Open source-projekter", "Spilhåndtering", "TILBAGE", "HJEM", "SCAN", "OPDATER", "Lager", "OPDATER", "GENINDLÆS", "Systemindstillinger", "Indstillinger for hviletilstand", "Controllergenveje", "Ekstra", "Ekstern HDD", "Spildumper", "Homebrew Store", "Måltemperatur", "INSTALLER", "SLET", "Indlæser…", "Klar", "Fejl", "ON", "OFF", "START", "STOP", "AUTOSTART", "Ingen", "Pause", "Fortsæt"}},
+    {"nl-NL", {"Debugservices", "Pakketinstallatie", "Plugins / Payload-ELFs", "Cheats", "Services", "Instellingen", "Info", "Game-overlay", "KStuff-menu", "Ventilatordoel", "Runtime / Systeem", "Open-sourceprojecten", "Gamebeheer", "TERUG", "START", "SCANNEN", "VERNIEUWEN", "Repository", "BIJWERKEN", "HERLADEN", "Systeemopties", "Rustmodusopties", "Controller-snelkoppelingen", "Extra’s", "Externe HDD", "Game Dumper", "Homebrew Store", "Doeltemperatuur", "INSTALLEREN", "VERWIJDEREN", "Laden…", "Gereed", "Fout", "ON", "OFF", "STARTEN", "STOPPEN", "AUTOSTART", "Geen", "Pauzeren", "Hervatten"}},
+    {"en-GB", {"Debug Services", "Package Installer", "Plugins / Payload ELFs", "Cheats", "Services", "Settings", "Info", "Game Overlay", "KStuff Menu", "Fan Target", "Runtime / System", "Open-source Projects", "Game Manager", "BACK", "HOME", "SCAN", "REFRESH", "Repository", "UPDATE", "RELOAD", "System Options", "Rest Mode Options", "Controller Shortcuts", "Extras", "External HDD", "Game Dumper", "Homebrew Store", "Target Temperature", "INSTALL", "DELETE", "Loading…", "Ready", "Error", "ON", "OFF", "START", "STOP", "AUTO START", "None", "Pause", "Unpause"}},
+    {"en-US", {"Debug Services", "Package Installer", "Plugins / Payload ELFs", "Cheats", "Services", "Settings", "Info", "Game Overlay", "KStuff Menu", "Fan Target", "Runtime / System", "Open-source Projects", "Game Manager", "BACK", "HOME", "SCAN", "REFRESH", "Repository", "UPDATE", "RELOAD", "System Options", "Rest Mode Options", "Controller Shortcuts", "Extras", "External HDD", "Game Dumper", "Homebrew Store", "Target Temperature", "INSTALL", "DELETE", "Loading…", "Ready", "Error", "ON", "OFF", "START", "STOP", "AUTO START", "None", "Pause", "Unpause"}},
+    {"fi-FI", {"Vianmäärityspalvelut", "Pakettien asennus", "Liitännäiset / Payload-ELF:t", "Huijaukset", "Palvelut", "Asetukset", "Tiedot", "Pelin peittokuva", "KStuff-valikko", "Tuulettimen tavoite", "Runtime / Järjestelmä", "Avoimen lähdekoodin projektit", "Pelinhallinta", "TAKAISIN", "KOTI", "SKANNAA", "PÄIVITÄ", "Arkisto", "PÄIVITÄ", "LATAA UUDELLEEN", "Järjestelmäasetukset", "Lepotilan asetukset", "Ohjaimen pikavalinnat", "Lisäasetukset", "Ulkoinen HDD", "Pelidumppaus", "Homebrew Store", "Tavoitelämpötila", "ASENNA", "POISTA", "Ladataan…", "Valmis", "Virhe", "ON", "OFF", "KÄYNNISTÄ", "PYSÄYTÄ", "AUTOMAATTIKÄYNNISTYS", "Ei mitään", "Keskeytä", "Jatka"}},
+    {"fr-CA", {"Services de débogage", "Installateur de paquets", "Plugins / Payloads ELF", "Triches", "Services", "Paramètres", "Infos", "Overlay de jeu", "Menu KStuff", "Cible ventilateur", "Runtime / Système", "Projets open source", "Gestionnaire de jeux", "RETOUR", "ACCUEIL", "ANALYSER", "ACTUALISER", "Dépôt", "METTRE À JOUR", "RECHARGER", "Options système", "Options du mode repos", "Raccourcis manette", "Extras", "Disque dur externe", "Dumper de jeux", "Boutique Homebrew", "Température cible", "INSTALLER", "SUPPRIMER", "Chargement…", "Prêt", "Erreur", "ON", "OFF", "DÉMARRER", "ARRÊTER", "DÉMARRAGE AUTO", "Aucun", "Pause", "Reprendre"}},
+    {"fr-FR", {"Services de débogage", "Installateur de paquets", "Plugins / Payloads ELF", "Triches", "Services", "Paramètres", "Infos", "Overlay de jeu", "Menu KStuff", "Cible ventilateur", "Runtime / Système", "Projets open source", "Gestionnaire de jeux", "RETOUR", "ACCUEIL", "ANALYSER", "ACTUALISER", "Dépôt", "METTRE À JOUR", "RECHARGER", "Options système", "Options du mode repos", "Raccourcis manette", "Extras", "Disque dur externe", "Dumper de jeux", "Boutique Homebrew", "Température cible", "INSTALLER", "SUPPRIMER", "Chargement…", "Prêt", "Erreur", "ON", "OFF", "DÉMARRER", "ARRÊTER", "DÉMARRAGE AUTO", "Aucun", "Pause", "Reprendre"}},
+    {"de-DE", {"Debug-Dienste", "Paket-Installer", "Plugins / Payload-ELFs", "Cheats", "Dienste", "Einstellungen", "Info", "Spiel-Overlay", "KStuff-Menü", "Lüfterziel", "Runtime / System", "Open-Source-Projekte", "Spiele-Manager", "ZURÜCK", "START", "SCANNEN", "AKTUALISIEREN", "Repository", "AKTUALISIEREN", "NEU LADEN", "Systemoptionen", "Ruhemodus-Optionen", "Controller-Kurzbefehle", "Extras", "Externe Festplatte", "Game Dumper", "Homebrew Store", "Zieltemperatur", "INSTALLIEREN", "LÖSCHEN", "Laden…", "Bereit", "Fehler", "ON", "OFF", "STARTEN", "STOPPEN", "AUTOSTART", "Keine", "Pausieren", "Fortsetzen"}},
+    {"el-GR", {"Υπηρεσίες εντοπισμού σφαλμάτων", "Εγκατάσταση πακέτων", "Πρόσθετα / Payload ELF", "Cheats", "Υπηρεσίες", "Ρυθμίσεις", "Πληροφορίες", "Επικάλυψη παιχνιδιού", "Μενού KStuff", "Στόχος ανεμιστήρα", "Runtime / Σύστημα", "Έργα ανοικτού κώδικα", "Διαχείριση παιχνιδιών", "ΠΙΣΩ", "ΑΡΧΙΚΗ", "ΣΑΡΩΣΗ", "ΑΝΑΝΕΩΣΗ", "Αποθετήριο", "ΕΝΗΜΕΡΩΣΗ", "ΕΠΑΝΑΦΟΡΤΩΣΗ", "Επιλογές συστήματος", "Επιλογές λειτουργίας ανάπαυσης", "Συντομεύσεις χειριστηρίου", "Πρόσθετα", "Εξωτερικός HDD", "Dumper παιχνιδιών", "Homebrew Store", "Θερμοκρασία στόχος", "ΕΓΚΑΤΑΣΤΑΣΗ", "ΔΙΑΓΡΑΦΗ", "Φόρτωση…", "Έτοιμο", "Σφάλμα", "ON", "OFF", "ΕΝΑΡΞΗ", "ΔΙΑΚΟΠΗ", "ΑΥΤΟΜΑΤΗ ΕΝΑΡΞΗ", "Κανένα", "Παύση", "Συνέχεια"}},
+    {"hu-HU", {"Hibakeresési szolgáltatások", "Csomagtelepítő", "Bővítmények / Payload ELF-ek", "Csalások", "Szolgáltatások", "Beállítások", "Információ", "Játék overlay", "KStuff menü", "Ventilátorcél", "Runtime / Rendszer", "Nyílt forráskódú projektek", "Játékkezelő", "VISSZA", "KEZDŐLAP", "KERESÉS", "FRISSÍTÉS", "Tároló", "FRISSÍTÉS", "ÚJRATÖLTÉS", "Rendszerbeállítások", "Pihenő mód beállításai", "Kontroller gyorsbillentyűk", "Extrák", "Külső HDD", "Játék dumper", "Homebrew Store", "Célhőmérséklet", "TELEPÍTÉS", "TÖRLÉS", "Betöltés…", "Kész", "Hiba", "ON", "OFF", "INDÍTÁS", "LEÁLLÍTÁS", "AUTOMATIKUS INDÍTÁS", "Nincs", "Szünet", "Folytatás"}},
+    {"id-ID", {"Layanan Debug", "Pemasang Paket", "Plugin / Payload ELF", "Cheat", "Layanan", "Pengaturan", "Info", "Overlay Game", "Menu KStuff", "Target Kipas", "Runtime / Sistem", "Proyek Sumber Terbuka", "Pengelola Game", "KEMBALI", "BERANDA", "PINDAI", "SEGARKAN", "Repositori", "PERBARUI", "MUAT ULANG", "Opsi Sistem", "Opsi Mode Istirahat", "Pintasan Kontroler", "Ekstra", "HDD Eksternal", "Dumper Game", "Homebrew Store", "Suhu Target", "PASANG", "HAPUS", "Memuat…", "Siap", "Kesalahan", "ON", "OFF", "MULAI", "HENTIKAN", "MULAI OTOMATIS", "Tidak ada", "Jeda", "Lanjutkan"}},
+    {"it-IT", {"Servizi Debug", "Installazione Pacchetti", "Plugin / Payload ELF", "Trucchi", "Servizi", "Impostazioni", "Info", "Overlay di Gioco", "Menu KStuff", "Target Ventola", "Runtime / Sistema", "Progetti Open Source", "Gestione Giochi", "INDIETRO", "HOME", "SCANSIONA", "AGGIORNA", "Repository", "AGGIORNA", "RICARICA", "Opzioni di Sistema", "Opzioni Modalità Riposo", "Scorciatoie Controller", "Extra", "HDD Esterno", "Dumper Giochi", "Homebrew Store", "Temperatura Obiettivo", "INSTALLA", "ELIMINA", "Caricamento…", "Pronto", "Errore", "ON", "OFF", "AVVIA", "ARRESTA", "AVVIO AUTOMATICO", "Nessuno", "Pausa", "Riprendi"}},
+    {"ja-JP", {"デバッグサービス", "パッケージインストーラー", "プラグイン / Payload ELF", "チート", "サービス", "設定", "情報", "ゲームオーバーレイ", "KStuff メニュー", "ファン目標", "ランタイム / システム", "オープンソースプロジェクト", "ゲームマネージャー", "戻る", "ホーム", "スキャン", "更新", "リポジトリ", "更新", "再読み込み", "システムオプション", "レストモードオプション", "コントローラーショートカット", "その他", "外付けHDD", "ゲームダンパー", "Homebrew Store", "目標温度", "インストール", "削除", "読み込み中…", "準備完了", "エラー", "ON", "OFF", "開始", "停止", "自動起動", "なし", "一時停止", "再開"}},
+    {"ko-KR", {"디버그 서비스", "패키지 설치", "플러그인 / Payload ELF", "치트", "서비스", "설정", "정보", "게임 오버레이", "KStuff 메뉴", "팬 목표", "런타임 / 시스템", "오픈 소스 프로젝트", "게임 관리자", "뒤로", "홈", "스캔", "새로 고침", "저장소", "업데이트", "다시 불러오기", "시스템 옵션", "대기 모드 옵션", "컨트롤러 단축키", "기타", "외장 HDD", "게임 덤퍼", "Homebrew Store", "목표 온도", "설치", "삭제", "불러오는 중…", "준비됨", "오류", "ON", "OFF", "시작", "중지", "자동 시작", "없음", "일시 정지", "계속"}},
+    {"no-NO", {"Feilsøkingstjenester", "Pakkeinstallasjon", "Plugins / Payload-ELF-er", "Juksekoder", "Tjenester", "Innstillinger", "Info", "Spilloverlegg", "KStuff-meny", "Viftemål", "Runtime / System", "Åpen kildekode-prosjekter", "Spillbehandling", "TILBAKE", "HJEM", "SKANN", "OPPDATER", "Kodelager", "OPPDATER", "LAST INN PÅ NYTT", "Systemalternativer", "Hvilemodusvalg", "Kontrollersnarveier", "Ekstra", "Ekstern HDD", "Spilldumper", "Homebrew Store", "Måltemperatur", "INSTALLER", "SLETT", "Laster…", "Klar", "Feil", "ON", "OFF", "START", "STOPP", "AUTOSTART", "Ingen", "Pause", "Fortsett"}},
+    {"pl-PL", {"Usługi debugowania", "Instalator pakietów", "Wtyczki / Payloady ELF", "Cheaty", "Usługi", "Ustawienia", "Informacje", "Nakładka gry", "Menu KStuff", "Cel wentylatora", "Runtime / System", "Projekty open source", "Menedżer gier", "WSTECZ", "START", "SKANUJ", "ODŚWIEŻ", "Repozytorium", "AKTUALIZUJ", "PRZEŁADUJ", "Opcje systemu", "Opcje trybu spoczynku", "Skróty kontrolera", "Dodatki", "Zewnętrzny HDD", "Dumper gier", "Homebrew Store", "Temperatura docelowa", "ZAINSTALUJ", "USUŃ", "Ładowanie…", "Gotowe", "Błąd", "ON", "OFF", "URUCHOM", "ZATRZYMAJ", "AUTOSTART", "Brak", "Wstrzymaj", "Wznów"}},
+    {"pt-BR", {"Serviços de depuração", "Instalador de pacotes", "Plugins / Payloads ELF", "Trapaças", "Serviços", "Configurações", "Informações", "Overlay do jogo", "Menu KStuff", "Alvo da ventoinha", "Runtime / Sistema", "Projetos de código aberto", "Gerenciador de jogos", "VOLTAR", "INÍCIO", "VERIFICAR", "ATUALIZAR", "Repositório", "ATUALIZAR", "RECARREGAR", "Opções do sistema", "Opções do modo de repouso", "Atalhos do controle", "Extras", "HD externo", "Dumper de jogos", "Loja Homebrew", "Temperatura alvo", "INSTALAR", "EXCLUIR", "Carregando…", "Pronto", "Erro", "ON", "OFF", "INICIAR", "PARAR", "INÍCIO AUTOMÁTICO", "Nenhum", "Pausar", "Retomar"}},
+    {"pt-PT", {"Serviços de depuração", "Instalador de pacotes", "Plugins / Payloads ELF", "Trapaças", "Serviços", "Definições", "Informações", "Overlay do jogo", "Menu KStuff", "Alvo da ventoinha", "Runtime / Sistema", "Projetos de código aberto", "Gestor de jogos", "VOLTAR", "INÍCIO", "VERIFICAR", "ATUALIZAR", "Repositório", "ATUALIZAR", "RECARREGAR", "Opções do sistema", "Opções do modo de repouso", "Atalhos do comando", "Extras", "Disco rígido externo", "Dumper de jogos", "Loja Homebrew", "Temperatura alvo", "INSTALAR", "ELIMINAR", "A carregar…", "Pronto", "Erro", "ON", "OFF", "INICIAR", "PARAR", "INÍCIO AUTOMÁTICO", "Nenhum", "Pausar", "Retomar"}},
+    {"ro-RO", {"Servicii de depanare", "Instalator de pachete", "Pluginuri / Payload-uri ELF", "Trucuri", "Servicii", "Setări", "Informații", "Suprapunere joc", "Meniu KStuff", "Țintă ventilator", "Runtime / Sistem", "Proiecte open source", "Manager jocuri", "ÎNAPOI", "ACASĂ", "SCANEAZĂ", "ACTUALIZEAZĂ", "Depozit", "ACTUALIZEAZĂ", "REÎNCARCĂ", "Opțiuni sistem", "Opțiuni mod repaus", "Scurtături controller", "Extra", "HDD extern", "Dumper jocuri", "Homebrew Store", "Temperatură țintă", "INSTALARE", "ȘTERGE", "Se încarcă…", "Gata", "Eroare", "ON", "OFF", "PORNEȘTE", "OPREȘTE", "PORNIRE AUTOMATĂ", "Niciunul", "Pauză", "Continuă"}},
+    {"ru-RU", {"Службы отладки", "Установщик пакетов", "Плагины / Payload ELF", "Читы", "Службы", "Настройки", "Информация", "Игровой оверлей", "Меню KStuff", "Цель вентилятора", "Runtime / Система", "Проекты с открытым исходным кодом", "Менеджер игр", "НАЗАД", "ГЛАВНАЯ", "СКАНИРОВАТЬ", "ОБНОВИТЬ", "Репозиторий", "ОБНОВИТЬ", "ПЕРЕЗАГРУЗИТЬ", "Параметры системы", "Параметры режима покоя", "Горячие клавиши контроллера", "Дополнительно", "Внешний HDD", "Дампер игр", "Homebrew Store", "Целевая температура", "УСТАНОВИТЬ", "УДАЛИТЬ", "Загрузка…", "Готово", "Ошибка", "ON", "OFF", "ЗАПУСТИТЬ", "ОСТАНОВИТЬ", "АВТОЗАПУСК", "Нет", "Пауза", "Продолжить"}},
+    {"es-419", {"Servicios de depuración", "Instalador de paquetes", "Plugins / Payloads ELF", "Trucos", "Servicios", "Ajustes", "Información", "Overlay de juego", "Menú KStuff", "Objetivo del ventilador", "Runtime / Sistema", "Proyectos de código abierto", "Gestor de juegos", "ATRÁS", "INICIO", "ESCANEAR", "ACTUALIZAR", "Repositorio", "ACTUALIZAR", "RECARGAR", "Opciones del sistema", "Opciones del modo reposo", "Atajos del mando", "Extras", "Disco duro externo", "Dumper de juegos", "Tienda Homebrew", "Temperatura objetivo", "INSTALAR", "ELIMINAR", "Cargando…", "Listo", "Error", "ON", "OFF", "INICIAR", "DETENER", "INICIO AUTOMÁTICO", "Ninguno", "Pausar", "Reanudar"}},
+    {"es-ES", {"Servicios de depuración", "Instalador de paquetes", "Plugins / Payloads ELF", "Trucos", "Servicios", "Ajustes", "Información", "Overlay de juego", "Menú KStuff", "Objetivo del ventilador", "Runtime / Sistema", "Proyectos de código abierto", "Gestor de juegos", "ATRÁS", "INICIO", "ESCANEAR", "ACTUALIZAR", "Repositorio", "ACTUALIZAR", "RECARGAR", "Opciones del sistema", "Opciones del modo reposo", "Atajos del mando", "Extras", "Disco duro externo", "Dumper de juegos", "Tienda Homebrew", "Temperatura objetivo", "INSTALAR", "ELIMINAR", "Cargando…", "Listo", "Error", "ON", "OFF", "INICIAR", "DETENER", "INICIO AUTOMÁTICO", "Ninguno", "Pausar", "Reanudar"}},
+    {"sv-SE", {"Felsökningstjänster", "Paketinstallation", "Plugins / Payload-ELF", "Fusk", "Tjänster", "Inställningar", "Info", "Speloverlay", "KStuff-meny", "Fläktmål", "Runtime / System", "Öppen källkod-projekt", "Spelhanterare", "TILLBAKA", "HEM", "SKANNA", "UPPDATERA", "Förråd", "UPPDATERA", "LADDA OM", "Systemalternativ", "Vilolägesalternativ", "Kontrollgenvägar", "Extra", "Extern HDD", "Speldumper", "Homebrew Store", "Måltemperatur", "INSTALLERA", "TA BORT", "Laddar…", "Klar", "Fel", "ON", "OFF", "STARTA", "STOPPA", "AUTOSTART", "Ingen", "Pausa", "Fortsätt"}},
+    {"th-TH", {"บริการดีบัก", "ตัวติดตั้งแพ็กเกจ", "ปลั๊กอิน / Payload ELF", "สูตรโกง", "บริการ", "การตั้งค่า", "ข้อมูล", "โอเวอร์เลย์เกม", "เมนู KStuff", "เป้าหมายพัดลม", "รันไทม์ / ระบบ", "โครงการโอเพนซอร์ส", "ตัวจัดการเกม", "ย้อนกลับ", "หน้าหลัก", "สแกน", "รีเฟรช", "คลัง", "อัปเดต", "โหลดใหม่", "ตัวเลือกระบบ", "ตัวเลือกโหมดพัก", "ทางลัดคอนโทรลเลอร์", "เพิ่มเติม", "HDD ภายนอก", "ตัวดัมพ์เกม", "Homebrew Store", "อุณหภูมิเป้าหมาย", "ติดตั้ง", "ลบ", "กำลังโหลด…", "พร้อม", "ข้อผิดพลาด", "ON", "OFF", "เริ่ม", "หยุด", "เริ่มอัตโนมัติ", "ไม่มี", "หยุดชั่วคราว", "ทำต่อ"}},
+    {"tr-TR", {"Hata Ayıklama Hizmetleri", "Paket Yükleyici", "Eklentiler / Payload ELF’leri", "Hileler", "Hizmetler", "Ayarlar", "Bilgi", "Oyun Kaplaması", "KStuff Menüsü", "Fan Hedefi", "Çalışma Zamanı / Sistem", "Açık Kaynak Projeleri", "Oyun Yöneticisi", "GERİ", "ANA SAYFA", "TARA", "YENİLE", "Depo", "GÜNCELLE", "YENİDEN YÜKLE", "Sistem Seçenekleri", "Dinlenme Modu Seçenekleri", "Kontrolcü Kısayolları", "Ekstralar", "Harici HDD", "Oyun Dumper", "Homebrew Store", "Hedef Sıcaklık", "YÜKLE", "SİL", "Yükleniyor…", "Hazır", "Hata", "ON", "OFF", "BAŞLAT", "DURDUR", "OTOMATİK BAŞLAT", "Yok", "Duraklat", "Devam Et"}},
+    {"uk-UA", {"Служби налагодження", "Інсталятор пакетів", "Плагіни / Payload ELF", "Чити", "Служби", "Налаштування", "Інформація", "Ігровий оверлей", "Меню KStuff", "Ціль вентилятора", "Runtime / Система", "Проєкти з відкритим кодом", "Менеджер ігор", "НАЗАД", "ГОЛОВНА", "СКАНУВАТИ", "ОНОВИТИ", "Репозиторій", "ОНОВИТИ", "ПЕРЕЗАВАНТАЖИТИ", "Параметри системи", "Параметри режиму спокою", "Швидкі команди контролера", "Додатково", "Зовнішній HDD", "Дампер ігор", "Homebrew Store", "Цільова температура", "ВСТАНОВИТИ", "ВИДАЛИТИ", "Завантаження…", "Готово", "Помилка", "ON", "OFF", "ЗАПУСТИТИ", "ЗУПИНИТИ", "АВТОЗАПУСК", "Немає", "Пауза", "Продовжити"}},
+    {"vi-VN", {"Dịch vụ gỡ lỗi", "Trình cài gói", "Plugin / Payload ELF", "Cheat", "Dịch vụ", "Cài đặt", "Thông tin", "Lớp phủ trò chơi", "Menu KStuff", "Mục tiêu quạt", "Runtime / Hệ thống", "Dự án mã nguồn mở", "Quản lý trò chơi", "QUAY LẠI", "TRANG CHỦ", "QUÉT", "LÀM MỚI", "Kho lưu trữ", "CẬP NHẬT", "TẢI LẠI", "Tùy chọn hệ thống", "Tùy chọn chế độ nghỉ", "Phím tắt tay cầm", "Bổ sung", "HDD ngoài", "Dumper trò chơi", "Homebrew Store", "Nhiệt độ mục tiêu", "CÀI ĐẶT", "XÓA", "Đang tải…", "Sẵn sàng", "Lỗi", "ON", "OFF", "BẮT ĐẦU", "DỪNG", "TỰ ĐỘNG KHỞI ĐỘNG", "Không có", "Tạm dừng", "Tiếp tục"}}
+};
+static int ph_locale_index() {
+    char locale[32] = {0};
+    const char* paths[] = {"/user/data/PIZZA_HEN/runtime/ui_locale.txt", "/data/PIZZA_HEN/runtime/ui_locale.txt"};
+    for (const char* path : paths) {
+        FILE* f = fopen(path, "r");
+        if (!f) continue;
+        if (fgets(locale, sizeof(locale), f)) { fclose(f); break; }
+        fclose(f);
+    }
+    size_t n = strlen(locale);
+    while (n && (locale[n-1] == '\n' || locale[n-1] == '\r' || locale[n-1] == ' ' || locale[n-1] == '\t')) locale[--n] = 0;
+    for (size_t i=0; i<sizeof(g_ph_langs)/sizeof(g_ph_langs[0]); ++i) if (!strcmp(locale, g_ph_langs[i].code)) return (int)i;
+    for (size_t i=0; i<sizeof(g_ph_langs)/sizeof(g_ph_langs[0]); ++i) if (!strcmp("en-US", g_ph_langs[i].code)) return (int)i;
+    return 0;
+}
+static const char* ph_t(int lang, PhI18nKey key) {
+    if (lang < 0 || (size_t)lang >= sizeof(g_ph_langs)/sizeof(g_ph_langs[0]) || key < 0 || key >= PH_KEY_COUNT) return "";
+    return g_ph_langs[lang].value[key];
+}
+static bool ph_is_english(int lang) { const char* c = g_ph_langs[lang].code; return !strcmp(c,"en-US") || !strcmp(c,"en-GB"); }
+static bool ph_is_italian(int lang) { return !strcmp(g_ph_langs[lang].code,"it-IT"); }
+static std::string ph_xml_escape(const std::string& in) {
+    std::string out; out.reserve(in.size()+16);
+    for (char ch : in) { switch(ch) { case '&': out += "&amp;"; break; case '<': out += "&lt;"; break; case '>': out += "&gt;"; break; case '"': out += "&quot;"; break; default: out += ch; } }
+    return out;
+}
+static void ph_replace_all(std::string& s, const std::string& from, const std::string& to) {
+    if (from.empty()) return; size_t pos=0; while ((pos=s.find(from,pos))!=std::string::npos) { s.replace(pos,from.size(),to); pos += to.size(); }
+}
+static void ph_replace_title(std::string& xml, const char* from, const std::string& to) {
+    ph_replace_all(xml, std::string("title=\"")+from+"\"", std::string("title=\"")+ph_xml_escape(to)+"\"");
+}
+static void ph_set_attr_text(std::string& xml, const char* attr, const std::string& value) {
+    const std::string needle=std::string(attr)+"=\""; const std::string escaped=ph_xml_escape(value); size_t pos=0;
+    while ((pos=xml.find(needle,pos))!=std::string::npos) { size_t start=pos+needle.size(), end=xml.find('"',start); if(end==std::string::npos)break; xml.replace(start,end-start,escaped); pos=start+escaped.size()+1; }
+}
+static void ph_localize_xml(std::string& xml, bool strip_details) {
+    if (xml.empty()) return; const int L=ph_locale_index();
+    auto T=[&](PhI18nKey k)->std::string{ return ph_t(L,k); };
+    // Core PIZZA HEN menus.
+    ph_replace_title(xml,"★ PIZZA HEN Debug Services","★ PIZZA HEN — "+T(PH_DEBUG_SERVICES));
+    ph_replace_title(xml,"PIZZA HEN Debug Services","PIZZA HEN — "+T(PH_DEBUG_SERVICES));
+    ph_replace_title(xml,"PIZZA HEN Debug Services - native PS5 service control center","PIZZA HEN — "+T(PH_DEBUG_SERVICES));
+    ph_replace_title(xml,"PIZZA HEN Debug Services on Startup","PIZZA HEN — "+T(PH_DEBUG_SERVICES)+" — "+T(PH_AUTO_START));
+    ph_replace_title(xml,"PIZZA HEN Toolbox","PIZZA HEN Toolbox");
+    ph_replace_title(xml,"PIZZA HEN Toolbox - native PS5 homebrew control center","PIZZA HEN Toolbox");
+    ph_replace_title(xml,"PIZZA HEN Toolbox on Startup","PIZZA HEN Toolbox — "+T(PH_AUTO_START));
+    ph_replace_title(xml,"★PIZZA HEN Toolbox (Lite)","★ PIZZA HEN Toolbox (Lite)");
+    ph_replace_title(xml,"Package Installer",T(PH_PACKAGE_INSTALLER));
+    ph_replace_title(xml,"Direct Package Installer",T(PH_PACKAGE_INSTALLER));
+    ph_replace_title(xml,"Direct Package Installer V2",T(PH_PACKAGE_INSTALLER)+" V2");
+    ph_replace_title(xml,"★ Custom Background Package Installer","★ "+T(PH_PACKAGE_INSTALLER));
+    ph_replace_title(xml,"Plugins / Payload ELFs",T(PH_PLUGINS_PAYLOADS));
+    ph_replace_title(xml,"Plugins",T(PH_PLUGINS_PAYLOADS));
+    ph_replace_title(xml,"★ Plugins - Startup Menu","★ "+T(PH_PLUGINS_PAYLOADS)+" — "+T(PH_AUTO_START));
+    ph_replace_title(xml,"Cheats — Unified Repository",T(PH_CHEATS)+" — "+T(PH_REPOSITORY));
+    ph_replace_title(xml,"Services",T(PH_SERVICES));
+    ph_replace_title(xml,"Settings",T(PH_SETTINGS));
+    ph_replace_title(xml,"PIZZA HEN Runtime / System","PIZZA HEN — "+T(PH_RUNTIME_SYSTEM));
+    ph_replace_title(xml,"Included Open-source Projects",T(PH_OPEN_SOURCE_PROJECTS));
+    ph_replace_title(xml,"★ Third-party projects and original authors","★ "+T(PH_OPEN_SOURCE_PROJECTS));
+    ph_replace_title(xml,"★ Game Manager","★ "+T(PH_GAME_MANAGER));
+    ph_replace_title(xml,"Game Manager (if installed)",T(PH_GAME_MANAGER));
+    ph_replace_title(xml,"Open Game Manager",T(PH_START)+" — "+T(PH_GAME_MANAGER));
+    ph_replace_title(xml,"External HDD",T(PH_EXTERNAL_HDD));
+    ph_replace_title(xml,"Extras",T(PH_EXTRAS));
+    ph_replace_title(xml,"Install the Homebrew Store",T(PH_INSTALL)+" — "+T(PH_HOMEBREW_STORE));
+    ph_replace_title(xml,"Home Menu",T(PH_HOME));
+    ph_replace_title(xml,"None",T(PH_NONE));
+    ph_replace_title(xml,"About PIZZA HEN","PIZZA HEN — "+T(PH_INFO));
+    ph_replace_title(xml,"★ Rest Mode Options","★ "+T(PH_REST_MODE_OPTIONS));
+    // Compact language-neutral labels for technical/legacy functions: keep function identity, remove mixed prose.
+    ph_replace_title(xml,"TestKit Menu","TestKit"); ph_replace_title(xml,"Remote Play","Remote Play");
+    ph_replace_title(xml,"Legacy FTP","FTP"); ph_replace_title(xml,"Klog","Klog"); ph_replace_title(xml,"Discord RPC","Discord RPC");
+    ph_replace_title(xml,"Display Title ID on Home Menu","Title ID — "+T(PH_HOME));
+    ph_replace_title(xml,"PIZZA HEN Game Options","PIZZA HEN — "+T(PH_SETTINGS));
+    ph_replace_title(xml,"Allow /data in App sandboxes","/data — App"); ph_replace_title(xml,"Allow FTP access to the /dev directory","FTP — /dev");
+    ph_replace_title(xml,"Auto Eject Disc on PIZZA HEN Start","PIZZA HEN — ⏏"); ph_replace_title(xml,"Blu-Ray (license) Activation","Blu-Ray");
+    ph_replace_title(xml,"Whitelisted Apps (SuperUser) Menu","SuperUser"); ph_replace_title(xml,"NP Environment","NP"); ph_replace_title(xml,"Add. Content Manager","DLC");
+    ph_replace_title(xml,"(Beta) PS5 webMAN Games","PS5 webMAN"); ph_replace_title(xml,"(Beta) Payload Homebrew Apps","Payload Homebrew");
+    ph_replace_title(xml,"[Debug] App Jailbreak Notification","[Debug] App"); ph_replace_title(xml,"[Debug] Legacy Jailbreak CMD Server","[Debug] CMD");
+    ph_replace_title(xml,"Lite Mode","Lite"); ph_replace_title(xml,"Automatically Open after PIZZA HEN loads",T(PH_AUTO_START));
+    ph_replace_title(xml,"Delay Debug Services activation (seconds)",T(PH_DEBUG_SERVICES)+" — s");
+    ph_replace_title(xml,"Disable Debug Services auto start when entering rest mode",T(PH_DEBUG_SERVICES)+" — "+T(PH_REST_MODE_OPTIONS));
+    ph_replace_title(xml,"Automatically close open games when entering rest mode",T(PH_GAME_MANAGER)+" — "+T(PH_REST_MODE_OPTIONS));
+    ph_replace_title(xml,"Automatically kill the PIZZA HEN services daemon when entering rest mode",T(PH_SERVICES)+" — "+T(PH_REST_MODE_OPTIONS));
+    ph_replace_title(xml,"Backend: ITEM00001 compatibility layer","ITEM00001");
+    ph_replace_title(xml,"Custom System Software information: PIZZA HEN runtime feature","PIZZA HEN — "+T(PH_RUNTIME_SYSTEM));
+    ph_replace_title(xml,"ELF loader / plugin infrastructure: TCP 9021","ELF / Plugin — TCP 9021");
+    ph_replace_title(xml,"Legacy FTP React/Self decryption support remains available with Legacy FTP","FTP React/Self");
+    ph_replace_title(xml,"Media Contents shortcut: PIZZA HEN Toolbox (PZHN00001)","PIZZA HEN Toolbox (PZHN00001)");
+    ph_replace_title(xml,"PIZZA HEN Debug: ps5debug-NG v1.3.0 — TCP 744 (automatic)","PIZZA HEN Debug — ps5debug-NG v1.3.0 — TCP 744");
+    ph_replace_title(xml,"PIZZA HEN FTP: ftpsrv v0.21 — TCP 2121 (automatic)","PIZZA HEN FTP — TCP 2121");
+    ph_replace_title(xml,"PIZZA HEN Game Manager integration by Michele Media","Michele Media"); ph_replace_title(xml,"PIZZA HEN logs/config are stored under /data/PIZZA_HEN","/data/PIZZA_HEN");
+    ph_replace_title(xml,"PIZZA HEN v0.1 - Italian Homebrew Environment","PIZZA HEN v1.0"); ph_replace_title(xml,"Project direction and branding: Michele Media","Michele Media");
+    ph_replace_title(xml,"Update Blocker: automatic during PIZZA HEN startup",T(PH_UPDATE)+" — PIZZA HEN");
+    // Pizza recipe is branding, not a service: preserve full Italian recipe only for Italian, compact it elsewhere.
+    ph_replace_title(xml,"★ Pizza Margherita Recipe ★","★ Pizza Margherita ★");
+    if (!ph_is_italian(L)) { ph_replace_title(xml,"Impasto: 500 g farina 00, 325 ml acqua, 2 g lievito, 10 g sale","🍕 PIZZA HEN"); ph_replace_title(xml,"Stendi l'impasto e aggiungi pomodoro e fior di latte","🍕"); ph_replace_title(xml,"Condimento: pomodoro, fior di latte, basilico, olio EVO","🍕"); ph_replace_title(xml,"Cuoci al massimo; basilico e olio EVO alla fine. PIZZA HEN e pronto!","🍕 PIZZA HEN"); }
+    // Runtime-generated submenus.
+    ph_replace_title(xml,"Remote Play connection details","Remote Play"); ph_replace_title(xml,"Save Remote Play Details to USB","Remote Play — USB");
+    ph_replace_title(xml,"Account activated by PIZZA HEN, please reboot your console before using Remote Play!","Remote Play — "+T(PH_READY));
+    ph_replace_title(xml,"PIZZA HEN Cheat Repository","PIZZA HEN "+T(PH_CHEATS)+" — "+T(PH_REPOSITORY));
+    ph_replace_title(xml,"Unified Collection (HEN-Cheats-Collection) - Recommended","HEN-Cheats-Collection"); ph_replace_title(xml,"PS5_Cheats Upstream Repository","PS5_Cheats"); ph_replace_title(xml,"GoldHEN Cheat Repository","GoldHEN"); ph_replace_title(xml,"RDX HEN-PPSA-Cheats (PS5 native only)","RDX HEN-PPSA-Cheats");
+    ph_replace_title(xml,"Download/Update Selected Repository",T(PH_UPDATE)+" "+T(PH_REPOSITORY)); ph_replace_title(xml,"Cache and reload Cheats list",T(PH_RELOAD)+" "+T(PH_CHEATS));
+    ph_replace_all(xml,"title=\"PIZZA HEN Cheats - No Game is open\"",std::string("title=\"PIZZA HEN ")+ph_xml_escape(T(PH_CHEATS))+"\"");
+    ph_replace_all(xml,"title=\"PIZZA HEN Cheats - ",std::string("title=\"PIZZA HEN ")+ph_xml_escape(T(PH_CHEATS))+" — ");
+    ph_replace_all(xml," is not currently running you wont be able to activate any cheats unless its open",std::string(" — ")+ph_xml_escape(T(PH_OFF)));
+    ph_replace_all(xml,"Unable to detect patch version",ph_xml_escape(T(PH_ERROR)));
+    ph_replace_all(xml,"<setting_list id=\"id_plapps\" title=\"PIZZA HEN Payload Homebrew - Applications\">","<setting_list id=\"id_plapps\" title=\"PIZZA HEN Payload Homebrew\">");
+    ph_replace_all(xml,"title=\"★ Custom PKG Installer ( ",std::string("title=\"★ ")+ph_xml_escape(T(PH_PACKAGE_INSTALLER))+" ( ");
+    ph_replace_title(xml,"Custom PKG Search Path",T(PH_PACKAGE_INSTALLER)+" — /path");
+    ph_replace_all(xml,"title=\"No PKGs found - Path: ",std::string("title=\"")+ph_xml_escape(T(PH_PACKAGE_INSTALLER)+" — "+T(PH_NONE))+" — ");
+    // KStuff/TestKit transient panels.
+    ph_replace_title(xml,"PIZZA HEN — Select KStuff Engine","PIZZA HEN — KStuff"); ph_replace_title(xml,"Choose one engine. PIZZA HEN will continue automatically after the selection.","KStuff");
+    ph_replace_title(xml,"KStuff Lite 1.09 — Modern Mode","KStuff Lite 1.09"); ph_replace_title(xml,"KStuff DR 1.2 — Compatibility Mode","KStuff DR 1.2");
+    ph_replace_title(xml,"Console Info overlay","Console Info"); ph_replace_title(xml,"On [Custom]",T(PH_ON)+" [Custom]"); ph_replace_title(xml,"On + APU Temp",T(PH_ON)+" + APU Temp"); ph_replace_title(xml,"On + Service Ports + temps",T(PH_ON)+" + TCP + APU"); ph_replace_title(xml,"Off",T(PH_OFF)); ph_replace_title(xml,"On",T(PH_ON));
+    ph_replace_title(xml,"Trial System Software Expiration overlay","System Software"); ph_replace_title(xml,"(ON) 1 Day",T(PH_ON)+" 1D"); ph_replace_title(xml,"(ON) 2 Days",T(PH_ON)+" 2D"); ph_replace_title(xml,"(ON) Expired",T(PH_OFF));
+    ph_replace_title(xml,"Enable Controllers for PS4 in Native Games","PS4 — Controller"); ph_replace_title(xml,"Orig. Debug Settings","Debug"); ph_replace_title(xml,"★ This Menu is not currently available on retail consoles","★ TestKit — "+T(PH_OFF));
+    // Keep external names/paths/cheat descriptions intact, but do not leak PIZZA HEN's own English prose in native menus.
+    if (!ph_is_english(L) && strip_details) { ph_set_attr_text(xml,"second_title",""); ph_set_attr_text(xml,"description",""); ph_set_attr_text(xml,"confirm","PIZZA HEN — "+T(PH_SETTINGS)); ph_replace_all(xml,"confirm_phrase=\"OK,Cancel\"",std::string("confirm_phrase=\"OK,")+ph_xml_escape(T(PH_BACK))+"\""); }
+}
+
 MonoObject* MemoryStream_Instance = nullptr;
 
 uint64_t GetManifestResourceStream_Hook(uint64_t inst, MonoString* FileName) {
-    
+    if (!shellui_hooks_are_ready())
+        return GetManifestResourceStream_Original ? GetManifestResourceStream_Original(inst, FileName) : 0;
+
     std::string new_xml_string;
     std::string resourceName = Mono_to_String(FileName);
 
@@ -2470,6 +2909,9 @@ uint64_t GetManifestResourceStream_Hook(uint64_t inst, MonoString* FileName) {
        generate_plapps_xml(new_xml_string);
   }
 
+    const bool ph_strip_details = is_debug_settings || is_tk_menu || is_plugin || is_auto_plugin || is_app_plugin;
+    ph_localize_xml(new_xml_string, ph_strip_details);
+
     MemoryStream_Instance = New_Mono_XML_From_String(new_xml_string);
     if (!MemoryStream_Instance) {
         return GetManifestResourceStream_Original(inst, FileName);
@@ -2485,6 +2927,9 @@ extern "C" int sceKernelGetPs4SystemSwVersion(OrbisKernelSwVersion *);
 
 MonoMethod* set_value_method = nullptr;
 int OnPreCreate_Hook(MonoObject* Instance, MonoObject* element) {
+    if (!shellui_hooks_are_ready())
+        return oOnPreCreate ? oOnPreCreate(Instance, element) : 0;
+
     bool& FTP = global_conf.FTP;
     bool& Klog = global_conf.Klog;
     bool& DPI = global_conf.DPI;
@@ -2761,20 +3206,6 @@ bool handle_uri_boot_common(MonoString* uri, int opt, MonoString* titleIdForBoot
         game_shortcut_activated_media = game_shortcut_activated = true;
         return true; // Signal to redirect
     }
-    else if(uri_string == "etaHEN?Cheats") {
-#if SHELL_DEBUG==1
-      shellui_log("cheats_shortcut URI detected");
-#endif
-      cheats_shortcut_activated = true;
-      return true; // Signal to redirect
-    }
-    else if(uri_string == "etaHEN?Cheats_not_open") {
-#if SHELL_DEBUG==1
-      shellui_log("cheats_shortcut (not open) URI detected");
-#endif
-      cheats_shortcut_activated_not_open = true;
-      return true;
-    }
     else if (uri_string == "etaHEN?Dump") {
 #if SHELL_DEBUG==1
         shellui_log("Dump URI detected");
@@ -2794,48 +3225,78 @@ bool handle_uri_boot_common(MonoString* uri, int opt, MonoString* titleIdForBoot
   }
   
   bool uri_boot_hook(MonoString* uri, int opt, MonoString* titleIdForBootAction) {
+    if (!shellui_hooks_are_ready())
+      return boot_orig ? boot_orig(uri, opt, titleIdForBootAction) : false;
+
     if(handle_uri_boot_common(uri, opt, titleIdForBootAction)) {
         if(global_conf.lite_mode) {
-            // In lite mode, we don't want to handle any shortcuts
             notify("Lite mode is enabled, shortcuts are disabled");
             return boot_orig(uri, opt, titleIdForBootAction);
         }
 
-        std::string uri_string = Mono_to_String(uri);
+        const std::string uri_string = Mono_to_String(uri);
         if(uri_string == "etaHEN?Dump") {
-          return boot_orig(mono_string_new(Root_Domain, "pshomeui:navigateToHome?bootCondition=psButton"),  opt, titleIdForBootAction);
+          return boot_orig(mono_string_new(Root_Domain, "pshomeui:navigateToHome?bootCondition=psButton"), opt, titleIdForBootAction);
         }
-      // Redirect to debug settings
-      return boot_orig(mono_string_new(Root_Domain, "pssettings:play?mode=settings&function=debug_settings"), opt, titleIdForBootAction);
+        return boot_orig(mono_string_new(Root_Domain, pizzahen_debug_services_uri()),
+                         opt, titleIdForBootAction);
     }
-    
+
+    // OnionHEN: 11.x+ stock debug_settings must be rewritten to the legacy
+    // DebugSettingsOldScreen path before Sony's RN DebugSettingsScreen wins.
+    const std::string original_uri = Mono_to_String(uri);
+    const std::string rewritten = pizzahen_rewrite_debug_services_route(original_uri);
+    if (rewritten != original_uri) {
+#if SHELL_DEBUG == 1
+      shellui_log("PIZZA HEN Onion route rewrite: %s -> %s",
+                  original_uri.c_str(), rewritten.c_str());
+#endif
+      return boot_orig(mono_string_new(Root_Domain, rewritten.c_str()),
+                       opt, titleIdForBootAction);
+    }
+
     return boot_orig(uri, opt, titleIdForBootAction);
   }
   
   bool uri_boot_hook_2(MonoString* uri, int opt) {
-  #if SHELL_DEBUG==1
+    if (!shellui_hooks_are_ready())
+      return boot_orig_2 ? boot_orig_2(uri, opt) : false;
+#if SHELL_DEBUG==1
     shellui_log("uri_boot_hook_2: %s, opt: %i", Mono_to_String(uri).c_str(), opt);
-  #endif
+#endif
     if(handle_uri_boot_common(uri, opt, nullptr)) {
-      // Redirect to debug settings (no titleId parameter for older fw)
       if(global_conf.lite_mode) {
-        // In lite mode, we don't want to handle any shortcuts
         notify("Lite mode is enabled, shortcuts are disabled");
         return boot_orig_2(uri, opt);
       }
 
-      std::string uri_string = Mono_to_String(uri);
+      const std::string uri_string = Mono_to_String(uri);
       if(uri_string == "etaHEN?Dump") {
-        return boot_orig_2(mono_string_new(Root_Domain, "pshomeui:navigateToHome?bootCondition=psButton"),  opt);
+        return boot_orig_2(mono_string_new(Root_Domain, "pshomeui:navigateToHome?bootCondition=psButton"), opt);
       }
 
-      return boot_orig_2(mono_string_new(Root_Domain, "pssettings:play?function=debug_settings"),  opt);
+      return boot_orig_2(mono_string_new(Root_Domain,
+                                         pizzahen_debug_services_uri_simple()),
+                         opt);
     }
-    
+
+    const std::string original_uri = Mono_to_String(uri);
+    const std::string rewritten = pizzahen_rewrite_debug_services_route(original_uri);
+    if (rewritten != original_uri) {
+#if SHELL_DEBUG == 1
+      shellui_log("PIZZA HEN Onion route rewrite(2): %s -> %s",
+                  original_uri.c_str(), rewritten.c_str());
+#endif
+      return boot_orig_2(mono_string_new(Root_Domain, rewritten.c_str()), opt);
+    }
+
     return boot_orig_2(uri, opt);
   }
 
   GamePadData GetData_hook(int deviceIndex) {
+    if (!shellui_hooks_are_ready())
+      return GetData ? GetData(deviceIndex) : GamePadData{};
+
     GamePadData result;
     bool cheas_sc_activated = false;
     bool game_sc_activated = false;
@@ -2940,7 +3401,7 @@ bool handle_uri_boot_common(MonoString* uri, int opt, MonoString* titleIdForBoot
 #if SHELL_DEBUG == 1
         shellui_log("Cheats Shortcut Activated");
 #endif
-        GoToURI("etaHEN?Cheats");
+        GoToURI("http://127.0.0.1:8080/fs/data/PIZZA_HEN/ui/toolbox-launcher.html#cheats");
         result.Buttons = None; // Clear the Select button to prevent triggering other actions
         cheas_sc_activated = false; // Reset the flag
       }
@@ -3076,7 +3537,7 @@ bool handle_uri_boot_common(MonoString* uri, int opt, MonoString* titleIdForBoot
 #if SHELL_DEBUG == 1
         shellui_log("Toolbox Shortcut Activated");
 #endif
-        GoToURI("pssettings:play?mode=settings&function=debug_settings");
+        GoToURI(pizzahen_debug_services_uri());
         result.Buttons = None; // Clear the Select button to prevent triggering other actions
       }
     }
@@ -3098,7 +3559,7 @@ bool CaptureScreen(){
 
   if(global_conf.cheats_shortcut_opt == CHEATS_LONG_SHARE){
     //shellui_log("CaptureScreen: Long Share Shortcut activated");
-    GoToURI("etaHEN?Cheats");
+    GoToURI("http://127.0.0.1:8080/fs/data/PIZZA_HEN/ui/toolbox-launcher.html#cheats");
     return true;
   }
   else if (global_conf.games_shortcut_opt == GAMES_LONG_SHARE){
@@ -3113,7 +3574,7 @@ bool CaptureScreen(){
   }
   else if (global_conf.toolbox_shortcut_opt == TOOLBOX_LONG_SHARE){
     //shellui_log("CaptureScreen: Long Share Shortcut activated");
-    GoToURI("pssettings:play?mode=settings&function=debug_settings");
+    GoToURI(pizzahen_debug_services_uri());
     return true;
   }
 
@@ -3159,7 +3620,7 @@ void OnShareButton(MonoObject * data) {
 
   if( global_conf.cheats_shortcut_opt == CHEATS_SINGLE_SHARE) {
     // shellui_log("Share Shortcut: Redirecting to Cheats");
-    GoToURI("etaHEN?Cheats");
+    GoToURI("http://127.0.0.1:8080/fs/data/PIZZA_HEN/ui/toolbox-launcher.html#cheats");
     return;
   }
   else if (global_conf.games_shortcut_opt == GAMES_SINGLE_SHARE) {
@@ -3175,7 +3636,7 @@ void OnShareButton(MonoObject * data) {
   }
   else if (global_conf.toolbox_shortcut_opt == TOOLBOX_SINGLE_SHARE) {
     // shellui_log("Share Shortcut: Redirecting to Toolbox");
-    GoToURI("pssettings:play?mode=settings&function=debug_settings");
+    GoToURI(pizzahen_debug_services_uri());
     return;
   }
 
@@ -3356,9 +3817,16 @@ void createJson_hook(MonoObject* inst, MonoObject* array, MonoString* id, MonoSt
        return;
     }
 #endif
-    if(id_str == "MENU_ID_CHECK_PATCH"){  
-      //createJson_hook: 8815fec90 id: MENU_ID_CHECK_PATCH, label: , actionUrl: pspatchcheck:check-for-update?titleid=CUSA01127, actionId: , messageId: msgid_check_update
-        createJson(inst, array, mono_string_new(Root_Domain, "MENU_ID_CHEATS"), mono_string_new(Root_Domain, "★ PIZZA HEN Cheats"), mono_string_new(Root_Domain, "etaHEN?Cheats_not_open"), actionId, nullptr, subMenu, enable);
+    // PIZZA HEN R7.13: one simple Game Options shortcut to the integrated
+    // CheatRunner page. Reuse the existing OptionMenu/createJson slot only:
+    // no new hook, preload, backend, lifecycle or auto-injection is introduced.
+    if(id_str == "MENU_ID_CHECK_PATCH") {
+        createJson(inst, array,
+                   mono_string_new(Root_Domain, "MENU_ID_CHEATRUNNER"),
+                   mono_string_new(Root_Domain, "CheatRunner"),
+                   mono_string_new(Root_Domain,
+                       "http://127.0.0.1:8080/fs/data/PIZZA_HEN/ui/toolbox-launcher.html#cheats"),
+                   actionId, nullptr, subMenu, enable);
         return;
     }
 

@@ -22,6 +22,7 @@ extern "C" {
 #include <dirent.h>
 #include <microhttpd.h>
 #include <signal.h>
+#include <ps5/kernel.h>
 }
 
 struct MHD_Daemon *httpd = NULL;
@@ -1090,6 +1091,18 @@ static enum MHD_Result dpiv2_on_request(void* cls, struct MHD_Connection* conn,
 
     char response_buffer[1024] = "No data received";
 
+    /*
+     * PIZZA HEN 12.20+ DPIv2 compatibility:
+     *
+     * etaHEN 2.6B's current DPIv2 URL path zero-initializes MetaInfo and sets
+     * only uri before sceAppInstUtilInstallByPackage().  This differs from the
+     * older etaHEN source baseline used by PIZZA HEN, which supplies non-NULL
+     * empty strings plus a content_name.  Preserve the hardware-PASS legacy
+     * behavior through 12.00 and use the current etaHEN 2.6B ABI shape only
+     * from 12.20 upward.
+     *
+     * The uploaded-file branch below is intentionally unchanged.
+     */
     MetaInfo arg1 = { .uri = "",
                      .ex_uri = "",
                      .playgo_scenario_id = "",
@@ -1103,7 +1116,17 @@ static enum MHD_Result dpiv2_on_request(void* cls, struct MHD_Connection* conn,
 
         if (url_value && strlen(url_value) > 0) {
             etaHEN_log("Received URL: %s", url_value);
-            arg1.uri = url_value;
+
+            const uint32_t fw = kernel_get_fw_version() & 0xffff0000u;
+            if (fw >= 0x12200000u) {
+                /* etaHEN 2.6B DPIv2 URL-call shape: all optional pointers NULL. */
+                arg1 = {};
+                arg1.uri = url_value;
+                etaHEN_log("DPIv2: etaHEN 2.6B MetaInfo ABI active for FW 0x%08X", fw);
+            } else {
+                /* Frozen etaHEN legacy behavior: hardware-PASS on 11.60. */
+                arg1.uri = url_value;
+            }
 
             install_result = sceAppInstUtilInstallByPackage(&arg1, &pkg_info, &arg3);
 

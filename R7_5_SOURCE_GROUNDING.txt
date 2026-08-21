@@ -1,0 +1,21 @@
+R7.5 SOURCE GROUNDING
+
+Cheat ownership correction:
+- R7.4 shellui/src/HookFunctions.cpp createJson_hook inserted ★ PIZZA HEN Cheats with actionUrl etaHEN?Cheats_not_open.
+- R7.4 shellui/src/prx.cpp service mode installed only OptionMenu/createJson and explicitly did not install Boot/CXML/manifest handlers.
+- Therefore the legacy etaHEN Cheats URI had no consumer until Debug Services full injection.
+- FIX70.37 already established the owned web Toolbox cheats surface at toolbox-launcher.html#cheats for service-only operation.
+- R7.5 applies that same owned-web principle directly to the Game Options action and carries the stock OptionMenu Title ID plus the existing find_pid() result.
+
+Cheat backend:
+- util/source/msg.cpp existing commands are unchanged:
+  GET_GAME_VER -> version from installed app metadata.
+  GET_GAME_CHEAT -> CheatManager lookup and /user/data/PIZZA_HEN/<TID>_cheats shared JSON.
+  TOGGLE_CHEAT -> CheatManager::ToggleCheat(pid, tid, cheat_id,...).
+- toolbox_api only forwards those existing commands and publishes /data/PIZZA_HEN/runtime/cheat_session.json for the web surface.
+
+Debug overlay correction:
+- shellui/src/MonoUtils.cpp LoadSettings() reads Settings.overlay_ram/cpu/gpu/fps/ip/kstuff and creates /system_tmp/fps_enabled when FPS is persisted ON.
+- shellui/src/prx.cpp full Debug Services runtime later uses those flags to create legacy overlays.
+- R7.5 forces only the full Debug Services copy's legacy overlay flags OFF immediately after LoadSettings(). The minimal startup Game Options service is excluded.
+- PHU Overlay remains a separate payload and lock file and is not stopped by this repair.

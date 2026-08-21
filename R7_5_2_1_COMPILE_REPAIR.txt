@@ -1,0 +1,16 @@
+R7.5.2.1 COMPILE REPAIR
+
+Basis: R7.5.2 TOOLBOX COMMAND ROUTE RESTORE.
+Build failure observed on Clang 18.1.8 with -Werror:
+- toolbox_api/src/main.c: shell_setting_set unused
+- toolbox_api/src/main.c: is_shell_key unused
+
+Repair is compile-only/dead-code cleanup:
+- removed unused shell_setting_set()
+- removed unused is_shell_key()
+- removed copy_file_atomic() and mirror_shell_config(), which became unreachable/dead with shell_setting_set removed
+
+No runtime call path was redirected by this repair.
+R7.5.2 direct config_set_numeric() + reload_daemons() route remains unchanged.
+R7.5.1 post-KStuff ShellUI preload rollback remains unchanged.
+Hardware status: UNTESTED.

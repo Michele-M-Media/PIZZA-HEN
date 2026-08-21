@@ -1,0 +1,101 @@
+{
+    "titleId": "PZHN00002",
+    "applicationCategoryType": 65536,
+    "deeplinkUri": "http://127.0.0.1:8080/fs/data/PIZZA_HEN/ui/debug-services-launcher.html",
+    "localizedParameters": {
+        "defaultLanguage": "en-US",
+        "ar-SA": {
+            "titleName": "خدمات التصحيح"
+        },
+        "zh-Hans": {
+            "titleName": "调试服务"
+        },
+        "zh-Hant": {
+            "titleName": "偵錯服務"
+        },
+        "cs-CZ": {
+            "titleName": "Ladicí služby"
+        },
+        "da-DK": {
+            "titleName": "Fejlfindingstjenester"
+        },
+        "nl-NL": {
+            "titleName": "Debugservices"
+        },
+        "en-GB": {
+            "titleName": "Debug Services"
+        },
+        "en-US": {
+            "titleName": "Debug Services"
+        },
+        "fi-FI": {
+            "titleName": "Vianmäärityspalvelut"
+        },
+        "fr-CA": {
+            "titleName": "Services de débogage"
+        },
+        "fr-FR": {
+            "titleName": "Services de débogage"
+        },
+        "de-DE": {
+            "titleName": "Debug-Dienste"
+        },
+        "el-GR": {
+            "titleName": "Υπηρεσίες εντοπισμού σφαλμάτων"
+        },
+        "hu-HU": {
+            "titleName": "Hibakeresési szolgáltatások"
+        },
+        "id-ID": {
+            "titleName": "Layanan Debug"
+        },
+        "it-IT": {
+            "titleName": "Servizi Debug"
+        },
+        "ja-JP": {
+            "titleName": "デバッグサービス"
+        },
+        "ko-KR": {
+            "titleName": "디버그 서비스"
+        },
+        "no-NO": {
+            "titleName": "Feilsøkingstjenester"
+        },
+        "pl-PL": {
+            "titleName": "Usługi debugowania"
+        },
+        "pt-BR": {
+            "titleName": "Serviços de depuração"
+        },
+        "pt-PT": {
+            "titleName": "Serviços de depuração"
+        },
+        "ro-RO": {
+            "titleName": "Servicii de depanare"
+        },
+        "ru-RU": {
+            "titleName": "Службы отладки"
+        },
+        "es-419": {
+            "titleName": "Servicios de depuración"
+        },
+        "es-ES": {
+            "titleName": "Servicios de depuración"
+        },
+        "sv-SE": {
+            "titleName": "Felsökningstjänster"
+        },
+        "th-TH": {
+            "titleName": "บริการดีบัก"
+        },
+        "tr-TR": {
+            "titleName": "Hata Ayıklama Hizmetleri"
+        },
+        "uk-UA": {
+            "titleName": "Служби налагодження"
+        },
+        "vi-VN": {
+            "titleName": "Dịch vụ gỡ lỗi"
+        }
+    }
+}

@@ -20,23 +20,6 @@ extern "C" int mdbg_call(void *, void *, void *);
 extern "C" int sceKernelDlsym(int handle, const char* symbol, void** addrp);
 extern "C" int *__error();
 
-static constexpr uintptr_t PID_OFFSET = 0xBC;
-static constexpr uintptr_t UCRED_OFFSET = 0x40;
-
-static uintptr_t getCurrentProc() {
-
-	const pid_t pid = getpid();
-	uintptr_t proc = kread<uintptr_t>(kernel_base + offsets::allproc());
-	while (proc != 0) {
-		int cid = kread<int>(proc + PID_OFFSET);
-		if (cid == pid) {
-			return proc;
-		}
-		proc = kread<uintptr_t>(proc);
-	}
-	return 0;
-}
-
 namespace dbg {
 
 int __attribute__((noinline)) mdbg_call(DbgArg1 &arg1, DbgArg2 &arg2, DbgArg3 &arg3) {
@@ -141,12 +124,15 @@ bool write(int pid, uintptr_t dst, const void *src, size_t length) {
 }
 
 uint64_t setAuthId(uint64_t authid) {
-	static constexpr int AUTHID_OFFSET = 0x58;
-	uintptr_t proc = getCurrentProc();
-	uintptr_t ucred = kread<uintptr_t>(proc + UCRED_OFFSET);
-	uint64_t id = kread<uint64_t>(ucred + AUTHID_OFFSET);
-	kwrite(ucred + AUTHID_OFFSET, authid);
-	return id;
+	const pid_t pid = getpid();
+	const uint64_t old_authid = kernel_get_ucred_authid(pid);
+	if (old_authid == 0) [[unlikely]] {
+		return 0;
+	}
+	if (kernel_set_ucred_authid(pid, authid) != 0) [[unlikely]] {
+		return 0;
+	}
+	return old_authid;
 }
 
 uintptr_t Tracer::call(const Registers &backup, Registers &jmp) const noexcept {
