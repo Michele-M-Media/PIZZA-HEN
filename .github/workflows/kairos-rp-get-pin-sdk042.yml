@@ -1,3 +1,4 @@
+# Temporary CI-only workflow. Do not merge.
 name: Kairos RP Get PIN SDK 0.42 Build
 
 on:
