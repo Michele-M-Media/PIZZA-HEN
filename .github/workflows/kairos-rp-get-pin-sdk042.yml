@@ -1,0 +1,60 @@
+name: Kairos RP Get PIN SDK 0.42 Build
+
+on:
+  push:
+    branches:
+      - kairos-rp-get-pin-sdk042-build
+    paths:
+      - '.github/workflows/kairos-rp-get-pin-sdk042.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Install host dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-18 lld-18 unzip make wget curl python3
+
+      - name: Install PS5 Payload SDK v0.42
+        run: |
+          curl -fL --retry 5 --retry-delay 2 \
+            https://github.com/ps5-payload-dev/sdk/releases/download/v0.42/ps5-payload-sdk.zip \
+            -o /tmp/ps5-payload-sdk.zip
+          sudo rm -rf /opt/ps5-payload-sdk
+          sudo unzip -q /tmp/ps5-payload-sdk.zip -d /opt
+          test -f /opt/ps5-payload-sdk/toolchain/prospero.mk
+
+      - name: Fetch upstream rp-get-pin v0.1.1
+        run: |
+          curl -fL --retry 5 --retry-delay 2 \
+            https://github.com/idlesauce/ps5-remoteplay-get-pin/archive/refs/tags/v0.1.1.zip \
+            -o /tmp/rp-get-pin-src.zip
+          unzip -q /tmp/rp-get-pin-src.zip -d "$GITHUB_WORKSPACE/build-src"
+          test -f "$GITHUB_WORKSPACE/build-src/ps5-remoteplay-get-pin-0.1.1/main.c"
+
+      - name: Build against SDK v0.42
+        working-directory: build-src/ps5-remoteplay-get-pin-0.1.1
+        env:
+          PS5_PAYLOAD_SDK: /opt/ps5-payload-sdk
+          CC: /opt/ps5-payload-sdk/bin/prospero-clang
+        run: |
+          make clean
+          make V=1
+          file rp-get-pin.elf
+          sha256sum rp-get-pin.elf | tee rp-get-pin.elf.sha256
+          strings -a rp-get-pin.elf | grep -E 'sceRemoteplayGeneratePinCode|sceRemotePlayConfirmDeviceRegist|kernel_get_ucred_caps' >/dev/null
+
+      - name: Publish ELF
+        uses: actions/upload-artifact@v4
+        with:
+          name: rp-get-pin-v0.1.1-sdk-v0.42
+          path: |
+            build-src/ps5-remoteplay-get-pin-0.1.1/rp-get-pin.elf
+            build-src/ps5-remoteplay-get-pin-0.1.1/rp-get-pin.elf.sha256
+          if-no-files-found: error
+          retention-days: 7
