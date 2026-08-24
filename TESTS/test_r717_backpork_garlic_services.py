@@ -1,0 +1,28 @@
+from pathlib import Path
+import hashlib
+R=Path(__file__).resolve().parents[1]; S=R/'Source Code'
+ui=(S/'bootstrapper/assets/toolbox_launcher.html').read_text(); main=(S/'bootstrapper/source/main.cpp').read_text(); daemon=(S/'bootstrapper/source/daemon.c').read_text(); api=(S/'toolbox_api/src/main.c').read_text(); msg=(S/'util/source/msg.cpp').read_text(); build=(R/'build_v01_rebase_latest_toolbox.sh').read_text()
+def sha(p): return hashlib.sha256(Path(p).read_bytes()).hexdigest()
+checks=[]
+def ck(n,v): checks.append(bool(v)); print(f'R717_{n}={"PASS" if v else "FAIL"}')
+ck('BACKPORK_HASH',sha(S/'bootstrapper/assets/ps5-backpork.elf')=='d74e4cd119b2bb1fd423f2f5b1c9a7f096b3e588c753af1ab48b983d56216a52')
+ck('GARLIC_HASH',sha(S/'bootstrapper/assets/garlic-savemgr.elf')=='124051ab3a762474720ae53187d2920bc96d6be1d69aa298e715667efc385a2f')
+ck('BACKPORK_EMBED','backpork_start' in daemon and r'.incbin \"../../../bootstrapper/assets/ps5-backpork.elf\"' in daemon)
+ck('GARLIC_EMBED','garlic_savemgr_start' in daemon and r'.incbin \"../../../bootstrapper/assets/garlic-savemgr.elf\"' in daemon)
+ck('DEPLOY', '/data/PIZZA_HEN/payloads/ps5-backpork.elf' in main and '/data/PIZZA_HEN/payloads/garlic-savemgr.elf' in main)
+ck('BACKPORK_SWITCH','id="svc_backpork"' in ui and 'toggleBackPorkService(this.checked,this)' in ui)
+ck('GARLIC_SWITCH','id="svc_garlic"' in ui and 'toggleGarlicSaveMgr(this.checked,this)' in ui)
+ck('LOAD_SYNC','syncBackPorkControl()' in ui and 'syncGarlicSaveMgrControl()' in ui)
+ck('BACKPORK_PID_STATE','managedPayloadRunning(BACKPORK_PATH)' in ui and 'waitManagedPayloadState(BACKPORK_PATH,on)' in ui)
+ck('BACKPORK_START_STOP',"plugin-launch '+BACKPORK_PATH+' ps5-backpork.elf" in ui and "plugin-stop '+BACKPORK_PATH+' ps5-backpork.elf payload" in ui)
+ck('GARLIC_TCP_STATE','garlic-status' in api and 'garlic_savemgr_port_ready' in api and 'htons(8082)' in api)
+ck('GARLIC_START_STOP',"plugin-launch '+GARLIC_SAVEMGR_PATH+' garlic-savemgr.elf" in ui and "plugin-stop '+GARLIC_SAVEMGR_PATH+' garlic-savemgr.elf payload" in ui)
+ck('GARLIC_POLL_R7181_I18N','waitGarlicSaveMgrState(on)' in ui and "phText('tcp_state_mismatch')+' — TCP 8082'" in ui)
+ck('BACKPORK_NOTIFY_R7181_I18N','BackPork 0.1 — %s' in msg and 'nt->started' in msg and 'nt->stopped' in msg)
+ck('GARLIC_NOTIFY_R7181_I18N',r'Garlic SaveMgr — %s\nIP: %s • TCP 8082' in msg and 'nt->started' in msg and 'nt->stopped' in msg)
+ck('DEDICATED_FILTER','it.path!==BACKPORK_PATH' in ui and 'it.path!==GARLIC_SAVEMGR_PATH' in ui)
+ck('NO_AUTOSTART', 'plugin-autostart "+BACKPORK_PATH' not in ui and 'plugin-autostart "+GARLIC_SAVEMGR_PATH' not in ui)
+ck('BUILD_VERIFY','verify_frozen_elf_only BACKPORK' in build and 'verify_frozen_elf_only GARLIC_SAVEMGR' in build)
+ck('BUILD_METADATA','R717_BACKPORK_MODE=TOOLBOX_SERVICES_PID_STATE_SWITCH' in build and 'R717_GARLIC_SAVEMGR_PORT=8082' in build)
+print(f'R7_17_BACKPORK_GARLIC_SERVICES={sum(checks)}/{len(checks)} {"PASS" if all(checks) else "FAIL"}')
+raise SystemExit(0 if all(checks) else 1)

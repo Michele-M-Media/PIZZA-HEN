@@ -17,6 +17,7 @@ The GPL-covered inherited source and its copyright notices remain subject to the
 - websrv — https://github.com/ps5-payload-dev/websrv
 - ftpsrv — https://github.com/ps5-payload-dev/ftpsrv
 - elfldr — https://github.com/ps5-payload-dev/elfldr
+- APR Emu Updater — https://github.com/tsuramatsu1/apr-emu-updater
 - ps5debug-NG — https://github.com/OpenSourcereR-dev/ps5debug-NG
 - Itemzflow — https://github.com/LightningMods/Itemzflow
 - libhijacker — https://github.com/astrelsky/libhijacker

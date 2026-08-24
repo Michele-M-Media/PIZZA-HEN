@@ -73,6 +73,8 @@ along with this program; see the file COPYING. If not, see
  extern const unsigned int kstuff_size;
  extern uint8_t kstuff_dr_start[];
  extern const unsigned int kstuff_dr_size;
+ extern uint8_t kstuff_base_start[];
+ extern const unsigned int kstuff_base_size;
  extern uint8_t websrv_start[];
  extern const unsigned int websrv_size;
  extern uint8_t selector_js_start[];
@@ -83,12 +85,72 @@ along with this program; see the file COPYING. If not, see
  extern const unsigned int selector_icon_size;
  extern uint8_t selector_action_start[];
  extern const unsigned int selector_action_size;
+ extern uint8_t shadow_selector_action_start[];
+ extern const unsigned int shadow_selector_action_size;
+ extern uint8_t shadow_selector_html_start[];
+ extern const unsigned int shadow_selector_html_size;
  extern uint8_t toolbox_action_start[];
  extern const unsigned int toolbox_action_size;
  extern uint8_t toolbox_api_start[];
  extern const unsigned int toolbox_api_size;
  extern uint8_t shadowmount_start[];
  extern const unsigned int shadowmount_size;
+ extern uint8_t shadowmount_experimental_start[];
+ extern const unsigned int shadowmount_experimental_size;
+ extern uint8_t apr_emu_updater_start[];
+ extern const unsigned int apr_emu_updater_size;
+ extern uint8_t backpork_start[];
+ extern const unsigned int backpork_size;
+ extern uint8_t garlic_savemgr_start[];
+ extern const unsigned int garlic_savemgr_size;
+ extern uint8_t fw_spoof_start[];
+ extern const unsigned int fw_spoof_size;
+ extern uint8_t airpsx_start[];
+ extern const unsigned int airpsx_size;
+ extern uint8_t ps5upload_start[];
+ extern const unsigned int ps5upload_size;
+ extern uint8_t np_fake_signin_start[];
+ extern const unsigned int np_fake_signin_size;
+ extern uint8_t wkali_start[];
+ extern const unsigned int wkali_size;
+ extern uint8_t app_dumper_start[];
+ extern const unsigned int app_dumper_size;
+ extern uint8_t game_compressor_start[];
+ extern const unsigned int game_compressor_size;
+ extern uint8_t web_file_manager_start[];
+ extern const unsigned int web_file_manager_size;
+ extern uint8_t linux_loader_start[];
+ extern const unsigned int linux_loader_size;
+ extern uint8_t pegasus_dl_start[];
+ extern const unsigned int pegasus_dl_size;
+ extern uint8_t spectrum_library_start[];
+ extern const unsigned int spectrum_library_size;
+ extern uint8_t remote_play_start[];
+ extern const unsigned int remote_play_size;
+ extern uint8_t optional_prospero_start[];
+ extern const unsigned int optional_prospero_size;
+ extern uint8_t optional_psplay_start[];
+ extern const unsigned int optional_psplay_size;
+ extern uint8_t optional_bfplayer_start[];
+ extern const unsigned int optional_bfplayer_size;
+ extern uint8_t chukei_dns_start[];
+ extern const unsigned int chukei_dns_size;
+ extern uint8_t nanodns_start[];
+ extern const unsigned int nanodns_size;
+ extern uint8_t unrar_ps5_start[];
+ extern const unsigned int unrar_ps5_size;
+ extern uint8_t ps_game_state_start[];
+ extern const unsigned int ps_game_state_size;
+ extern uint8_t ghostpad_start[];
+ extern const unsigned int ghostpad_size;
+ extern uint8_t ghostcontrol_start[];
+ extern const unsigned int ghostcontrol_size;
+ extern uint8_t ps_discord_start[];
+ extern const unsigned int ps_discord_size;
+ extern uint8_t custom_tool_manager_start[];
+ extern const unsigned int custom_tool_manager_size;
+ extern uint8_t wallpaper_modder_start[];
+ extern const unsigned int wallpaper_modder_size;
  extern uint8_t ftpsrv_start[];
  extern const unsigned int ftpsrv_size;
  extern uint8_t ps5debug_ng_start[];
@@ -378,6 +440,46 @@ static void cleanup(void);
       fsync(fd);
       close(fd);
       return true;
+  }
+
+
+  /* R7.25.2.10: PS-Play can leave a generated launcher source under
+     /data/homebrew/ProsperoPlayer.  Pristine ShadowMountPlus scans
+     /data/homebrew and emits "Installing: PS Play (PRSP10001)..." for that
+     stale source.  Keep both payload ELFs and ShadowMountPlus unchanged;
+     remove only the generated launcher when its param.json identifies PS Play. */
+  static bool text_file_contains_two(const char *path, const char *a, const char *b) {
+      if (!path || !a || !b) return false;
+      int fd = open(path, O_RDONLY);
+      if (fd < 0) return false;
+      struct stat st{};
+      if (fstat(fd, &st) != 0 || st.st_size <= 0 || st.st_size > 65536) { close(fd); return false; }
+      size_t size = (size_t)st.st_size;
+      char *buf = (char *)malloc(size + 1);
+      if (!buf) { close(fd); return false; }
+      size_t got = 0;
+      while (got < size) {
+          ssize_t n = read(fd, buf + got, size - got);
+          if (n <= 0) break;
+          got += (size_t)n;
+      }
+      close(fd);
+      buf[got] = '\0';
+      bool match = got == size && strstr(buf, a) != nullptr && strstr(buf, b) != nullptr;
+      free(buf);
+      return match;
+  }
+
+  static void cleanup_shadowmount_psplay_generated_source(void) {
+      const char *root = "/data/homebrew/ProsperoPlayer";
+      const char *param = "/data/homebrew/ProsperoPlayer/sce_sys/param.json";
+      if (!text_file_contains_two(param, "PRSP10001", "PS Play")) return;
+      klog_puts("PIZZA HEN: removing stale PS Play launcher source before ShadowMount scan");
+      unlink("/data/homebrew/ProsperoPlayer/eboot.elf");
+      unlink("/data/homebrew/ProsperoPlayer/sce_sys/icon0.png");
+      unlink(param);
+      rmdir("/data/homebrew/ProsperoPlayer/sce_sys");
+      rmdir(root);
   }
 
   // FIX30: one-time Media Contents shortcut, based on the same public
@@ -673,7 +775,21 @@ done_debug_services:
       for (ssize_t i = 0; i < n; ++i) {
           if (out[i] == '\r' || out[i] == '\n' || out[i] == ' ' || out[i] == '\t') { out[i] = 0; break; }
       }
-      return (!strcmp(out, "lite") || !strcmp(out, "dr"));
+      return (!strcmp(out, "lite") || !strcmp(out, "dr") || !strcmp(out, "base"));
+  }
+
+  static int read_shadowmount_request(char *out, size_t out_size) {
+      if (!out || out_size < 7) return 0;
+      int fd = open("/data/PIZZA_HEN/runtime/shadowmount_request.txt", O_RDONLY);
+      if (fd < 0) return 0;
+      ssize_t n = read(fd, out, out_size - 1);
+      close(fd);
+      if (n <= 0) return 0;
+      out[n] = 0;
+      for (ssize_t i = 0; i < n; ++i) {
+          if (out[i] == '\r' || out[i] == '\n' || out[i] == ' ' || out[i] == '\t') { out[i] = 0; break; }
+      }
+      return (!strcmp(out, "stable") || !strcmp(out, "experimental") || !strcmp(out, "skip"));
   }
 
   static bool kstuff_probe_ready(void) {
@@ -788,32 +904,165 @@ done_debug_services:
       return 0;
   }
 
+  static int start_browser_shadowmount_selector(void) {
+      // The KStuff page hands the same browser view to this URL as soon as
+      // kstuff_active.txt appears. Launching it again here is intentional:
+      // it also covers sessions where KStuff was already active before PIZZA HEN.
+      if (!wait_for_local_websrv(12000)) return -30;
+      static const char selector_url[] =
+          "http://127.0.0.1:8080/fs/data/PIZZA_HEN/ui/shadowmount-selector.html";
+      return sceSystemServiceLaunchWebBrowser(selector_url);
+  }
+
+  static int wait_for_web_shadowmount_request(char *choice, size_t choice_size) {
+      for (int i = 0; i < 180; ++i) {
+          if (read_shadowmount_request(choice, choice_size)) return 1;
+          sleep(1);
+      }
+      return 0;
+  }
+
   void write_embedded_assets() {
     mkdir("/data/PIZZA_HEN/", 0777);
     mkdir("/data/PIZZA_HEN/assets/", 0777);
     mkdir("/data/PIZZA_HEN/bin/", 0777);
+    mkdir("/data/PIZZA_HEN/payloads/", 0777);
     mkdir("/data/PIZZA_HEN/engines/", 0777);
     mkdir("/data/PIZZA_HEN/runtime/", 0777);
     mkdir("/data/PIZZA_HEN/ui/", 0777);
     mkdir("/data/PIZZA_HEN/themes/", 0777);
     mkdir("/data/PIZZA_HEN/themes/itemzflow/", 0777);
+    mkdir("/data/PIZZA_HEN/builtin/", 0777);
     mkdir("/data/homebrew/", 0777);
     mkdir("/data/homebrew/000_PIZZA_HEN_KSTUFF_SELECTOR/", 0777);
     mkdir("/data/homebrew/000_PIZZA_HEN_KSTUFF_SELECTOR/sce_sys/", 0777);
 
-    // FIX21: write the two frozen KStuff engines plus the websrv selector bridge.
+    // R7.18: write the three frozen KStuff engines plus the websrv selector bridge.
     write_blob_file("/data/PIZZA_HEN/engines/kstuff-lite-1.10.elf",
                     &kstuff_start, kstuff_size, 0777);
     write_blob_file("/data/PIZZA_HEN/engines/kstuff-dr-1.2-test1.elf",
                     &kstuff_dr_start, kstuff_dr_size, 0777);
+    write_blob_file("/data/PIZZA_HEN/engines/kstuff-base-1.6.7.elf",
+                    &kstuff_base_start, kstuff_base_size, 0777);
     write_blob_file("/data/PIZZA_HEN/bin/pizzahen-kstuff-select.elf",
                     &selector_action_start, selector_action_size, 0777);
+    write_blob_file("/data/PIZZA_HEN/bin/pizzahen-shadowmount-select.elf",
+                    &shadow_selector_action_start, shadow_selector_action_size, 0777);
+    write_blob_file("/data/PIZZA_HEN/payloads/apr_emu_updater.elf",
+                    &apr_emu_updater_start, apr_emu_updater_size, 0777);
+    write_blob_file("/data/PIZZA_HEN/payloads/ps5-backpork.elf",
+                    &backpork_start, backpork_size, 0777);
+    write_blob_file("/data/PIZZA_HEN/payloads/garlic-savemgr.elf",
+                    &garlic_savemgr_start, garlic_savemgr_size, 0777);
+    write_blob_file("/data/PIZZA_HEN/payloads/ps5-fw-spoof_v26616621599.elf",
+                    &fw_spoof_start, fw_spoof_size, 0777);
+    write_blob_file("/data/PIZZA_HEN/payloads/airpsx_v0.19.elf",
+                    &airpsx_start, airpsx_size, 0777);
+    write_blob_file("/data/PIZZA_HEN/payloads/ps5upload_v5.4.8.elf",
+                    &ps5upload_start, ps5upload_size, 0777);
+    write_blob_file("/data/PIZZA_HEN/payloads/np-fake-signin_v1.3.elf",
+                    &np_fake_signin_start, np_fake_signin_size, 0777);
+    write_blob_file("/data/PIZZA_HEN/payloads/webkit-autoloader-installer_v0.4.0-pre-00e1028.elf",
+                    &wkali_start, wkali_size, 0777);
+    write_blob_file("/data/PIZZA_HEN/payloads/ps5-app-dumper_v1.11.elf",
+                    &app_dumper_start, app_dumper_size, 0777);
+    write_blob_file("/data/PIZZA_HEN/payloads/game-compressor.elf",
+                    &game_compressor_start, game_compressor_size, 0777);
+    write_blob_file("/data/PIZZA_HEN/payloads/web-file-mgr.elf",
+                    &web_file_manager_start, web_file_manager_size, 0777);
+    write_blob_file("/data/PIZZA_HEN/payloads/ps5-linux-loader.elf",
+                    &linux_loader_start, linux_loader_size, 0777);
+    write_blob_file("/data/PIZZA_HEN/payloads/pegasus-dl.elf",
+                    &pegasus_dl_start, pegasus_dl_size, 0777);
+    write_blob_file("/data/PIZZA_HEN/payloads/Spectrum-Library.elf",
+                    &spectrum_library_start, spectrum_library_size, 0777);
+    write_blob_file("/data/PIZZA_HEN/payloads/rp-get-pin.elf",
+                    &remote_play_start, remote_play_size, 0777);
+    /* R7.25.1: original media-player ELFs are deployed as ordinary PIZZA HEN
+       services. They are never launched here; the user controls them from
+       Services with the same start/stop mechanism as other on-demand ELFs. */
+    write_blob_file("/data/PIZZA_HEN/payloads/ProsperoPlayer_v1.0.elf",
+                    &optional_prospero_start, optional_prospero_size, 0777);
+    write_blob_file("/data/PIZZA_HEN/payloads/PS-Play_v2.1.elf",
+                    &optional_psplay_start, optional_psplay_size, 0777);
+    write_blob_file("/data/PIZZA_HEN/payloads/BFplayer-standalone_v0.1.0-alpha.44.elf",
+                    &optional_bfplayer_start, optional_bfplayer_size, 0777);
+    /* R7.25.2.2: user-supplied DNS ELFs are embedded byte-for-byte and
+       exposed only through the standard managed-task service switches. */
+    write_blob_file("/data/PIZZA_HEN/payloads/Chukei_DNS_v0.9.0.elf",
+                    &chukei_dns_start, chukei_dns_size, 0777);
+    write_blob_file("/data/PIZZA_HEN/payloads/nanoDNS_v0.4.elf",
+                    &nanodns_start, nanodns_size, 0777);
+
+    /* R7.25.2.7: original user-supplied service payloads. PIZZA HEN only
+       embeds/deploys them and exposes the standard Services start/stop UI. */
+    write_blob_file("/data/PIZZA_HEN/payloads/unrar-ps5_v1.4.0.elf",
+                    &unrar_ps5_start, unrar_ps5_size, 0777);
+    write_blob_file("/data/PIZZA_HEN/payloads/PS_Game_State_Lib_v0.1.elf",
+                    &ps_game_state_start, ps_game_state_size, 0777);
+    write_blob_file("/data/PIZZA_HEN/payloads/Ghostpad_v1.0.0.elf",
+                    &ghostpad_start, ghostpad_size, 0777);
+    write_blob_file("/data/PIZZA_HEN/payloads/Ghostcontrol-PS5-USB-Controller-Patcher_v1.0.5.elf",
+                    &ghostcontrol_start, ghostcontrol_size, 0777);
+    write_blob_file("/data/PIZZA_HEN/payloads/PS-DiscordPresence_v0.01.elf",
+                    &ps_discord_start, ps_discord_size, 0777);
+
+    /* R7.25.2.6: retire stale boot markers left by older builds.  These tools
+       are manual-only in the current Toolbox.  In particular PS-Play contains
+       its own launcher installer, so a stale marker must never cause a silent
+       boot-time install.  Payload binaries are untouched. */
+    const char *manual_only_autostart_markers[] = {
+        "/data/PIZZA_HEN/payloads/rp-get-pin.elf.auto_start",
+        "/data/PIZZA_HEN/payloads/ps5-linux-loader.elf.auto_start",
+        "/data/PIZZA_HEN/payloads/svtplay_v0.2.elf.auto_start",
+        "/data/PIZZA_HEN/payloads/ProsperoPlayer_v1.0.elf.auto_start",
+        "/data/PIZZA_HEN/payloads/PS-Play_v2.1.elf.auto_start",
+        "/data/PIZZA_HEN/payloads/BFplayer-standalone_v0.1.0-alpha.44.elf.auto_start",
+        "/data/PIZZA_HEN/payloads/unrar-ps5_v1.4.0.elf.auto_start",
+        "/data/PIZZA_HEN/payloads/PS_Game_State_Lib_v0.1.elf.auto_start",
+        "/data/PIZZA_HEN/payloads/Ghostpad_v1.0.0.elf.auto_start",
+        "/data/PIZZA_HEN/payloads/Ghostcontrol-PS5-USB-Controller-Patcher_v1.0.5.elf.auto_start",
+        "/data/PIZZA_HEN/payloads/Remote_Play.elf.auto_start",
+        "/data/PIZZA_HEN/payloads/PS-DiscordPresence_v0.01.elf.auto_start",
+        "/data/PIZZA_HEN/payloads/garlic-worker_v1.1.6.elf.auto_start",
+        "/user/data/PIZZA_HEN/payloads/rp-get-pin.elf.auto_start",
+        "/user/data/PIZZA_HEN/payloads/ps5-linux-loader.elf.auto_start",
+        "/user/data/PIZZA_HEN/payloads/svtplay_v0.2.elf.auto_start",
+        "/user/data/PIZZA_HEN/payloads/ProsperoPlayer_v1.0.elf.auto_start",
+        "/user/data/PIZZA_HEN/payloads/PS-Play_v2.1.elf.auto_start",
+        "/user/data/PIZZA_HEN/payloads/BFplayer-standalone_v0.1.0-alpha.44.elf.auto_start",
+        "/user/data/PIZZA_HEN/payloads/unrar-ps5_v1.4.0.elf.auto_start",
+        "/user/data/PIZZA_HEN/payloads/PS_Game_State_Lib_v0.1.elf.auto_start",
+        "/user/data/PIZZA_HEN/payloads/Ghostpad_v1.0.0.elf.auto_start",
+        "/user/data/PIZZA_HEN/payloads/Ghostcontrol-PS5-USB-Controller-Patcher_v1.0.5.elf.auto_start",
+        "/user/data/PIZZA_HEN/payloads/Remote_Play.elf.auto_start",
+        "/user/data/PIZZA_HEN/payloads/PS-DiscordPresence_v0.01.elf.auto_start",
+        "/user/data/PIZZA_HEN/payloads/garlic-worker_v1.1.6.elf.auto_start",
+        nullptr};
+    for (const char **marker = manual_only_autostart_markers; *marker; ++marker)
+      unlink(*marker);
+    /* R7.25.2.8: Remote_Play.elf and garlic-worker_v1.1.6.elf are retired
+       from Services. Remove stale copies left by R7.25.2.7 so they cannot
+       reappear through the generic payload scanner. */
+    unlink("/data/PIZZA_HEN/payloads/Remote_Play.elf");
+    unlink("/data/PIZZA_HEN/payloads/garlic-worker_v1.1.6.elf");
+    unlink("/user/data/PIZZA_HEN/payloads/Remote_Play.elf");
+    unlink("/user/data/PIZZA_HEN/payloads/garlic-worker_v1.1.6.elf");
+    /* R7.25.2.5: web-only Themes Avatar payloads. The original web functions
+       are preserved; only each payload's self-installer path is disabled in
+       the frozen PIZZA-derived ELF so no launcher icon/app is created. */
+    write_blob_file("/data/PIZZA_HEN/payloads/PS5-Custom-Tool-Manager-pizza-web-only.elf",
+                    &custom_tool_manager_start, custom_tool_manager_size, 0777);
+    write_blob_file("/data/PIZZA_HEN/payloads/ps5-wallpaper-modd-pizza-web-only.elf",
+                    &wallpaper_modder_start, wallpaper_modder_size, 0777);
     write_blob_file("/data/PIZZA_HEN/bin/pizzahen-toolbox-open.elf",
                     &toolbox_action_start, toolbox_action_size, 0777);
     write_blob_file("/data/PIZZA_HEN/bin/pizzahen-api.elf",
                     &toolbox_api_start, toolbox_api_size, 0777);
     write_blob_file("/data/PIZZA_HEN/ui/kstuff-selector.html",
                     &selector_html_start, selector_html_size, 0666);
+    write_blob_file("/data/PIZZA_HEN/ui/shadowmount-selector.html",
+                    &shadow_selector_html_start, shadow_selector_html_size, 0666);
     write_blob_file("/data/PIZZA_HEN/ui/toolbox-launcher.html",
                     &toolbox_launcher_html_start, toolbox_launcher_html_size, 0666);
     write_blob_file("/data/PIZZA_HEN/ui/debug-services-launcher.html",
@@ -825,6 +1074,9 @@ done_debug_services:
     unlink("/data/PIZZA_HEN/runtime/kstuff_request.txt");
     unlink("/data/PIZZA_HEN/runtime/kstuff_request.tmp");
     unlink("/data/PIZZA_HEN/runtime/kstuff_active.txt");
+    unlink("/data/PIZZA_HEN/runtime/shadowmount_request.txt");
+    unlink("/data/PIZZA_HEN/runtime/shadowmount_request.tmp");
+    unlink("/data/PIZZA_HEN/runtime/shadowmount_active.txt");
 #if 0
     int fd = open("/system_ex/common_ex/lib/shell.prx", O_WRONLY | O_CREAT | O_TRUNC, 0666);
     if (fd == -1) {
@@ -1379,6 +1631,28 @@ bool load_plugin(const char *path, const char *filename)
   return true;
 }
 
+/* R7.25.2.8: manual-only/retired payloads must never be boot-autostarted.
+ * This is the same filename gate already proven in the earlier
+ * DNS-DIRECT-PAYLOAD-PSPLAY-AUTOSTART-BLOCK checkpoint, now merged back
+ * into the active Services branch. It blocks stale .auto_start markers from
+ * PIZZA HEN, legacy etaHEN and USB roots without changing the payload ELF. */
+static bool pizzahen_manual_only_payload_name(const char *name) {
+  if (!name) return false;
+  static const char *names[] = {
+      "rp-get-pin.elf",
+      "ps5-linux-loader.elf",
+      "svtplay_v0.2.elf",
+      "ProsperoPlayer_v1.0.elf",
+      "PS-Play_v2.1.elf",
+      "BFplayer-standalone_v0.1.0-alpha.44.elf",
+      "Remote_Play.elf",
+      "garlic-worker_v1.1.6.elf",
+      nullptr};
+  for (const char **it = names; *it; ++it)
+    if (strcmp(name, *it) == 0) return true;
+  return false;
+}
+
 /*=================== LOAD PLUGINS =========================*/
 char **find_plugin_files() {
   const char *base_dirs[] = {
@@ -1413,6 +1687,11 @@ char **find_plugin_files() {
           const char *ext = strrchr(entry->d_name, '.');
           if (ext && (strcmp(ext, ".plugin") == 0 || strcmp(ext, ".elf") == 0)) {
             bool skip = false;
+            if (pizzahen_manual_only_payload_name(entry->d_name)) {
+              printf("manual-only payload: ignoring stale autostart marker for %s/%s\n",
+                     base_dirs[i], entry->d_name);
+              continue;
+            }
             // Construct full path
             snprintf(full_path, sizeof(full_path), "%s/%s", base_dirs[i],
                      entry->d_name);
@@ -1710,7 +1989,7 @@ int main(void) {
           return 0;
       }
 
-      ui_trace("PIZZA HEN W2: browser selector visible - choose Lite 1.10 or DR 1.2");
+      ui_trace("PIZZA HEN W2: browser selector visible - choose Lite 1.10, DR 1.2, or Base 1.6.7");
       if (!wait_for_web_kstuff_request(choice, sizeof(choice))) {
           notify("PIZZA HEN W3-TIMEOUT: no KStuff selected");
           return 0;
@@ -1726,6 +2005,10 @@ int main(void) {
           chosen = kstuff_dr_start;
           chosen_size = kstuff_dr_size;
           chosen_name = "kstuff-dr-1.2";
+      } else if (!strcmp(choice, "base")) {
+          chosen = kstuff_base_start;
+          chosen_size = kstuff_base_size;
+          chosen_name = "kstuff-base-1.6.7";
       } else {
           chosen = kstuff_start;
           chosen_size = kstuff_size;
@@ -1757,6 +2040,44 @@ int main(void) {
       ui_trace("PIZZA HEN W5: %s ready", chosen_name);
   }
 
+  cleanup_shadowmount_psplay_generated_source();
+
+  // R7.14: second explicit selector gate. KStuff is ready; now the user
+  // chooses exactly one ShadowMount engine before any post-ShadowMount service
+  // (FTP, Debug, etc.) is allowed to start.
+  uint8_t *selected_shadow = shadowmount_start;
+  unsigned int selected_shadow_size = shadowmount_size;
+  const char *selected_shadow_name = "ShadowMountPlus-1.6beta16-STABLE";
+  const char *selected_shadow_choice = "stable";
+  {
+      char shadow_choice[24] = {0};
+      ui_trace("PIZZA HEN V0: ShadowMount selector stage");
+      int shadow_selector_rc = start_browser_shadowmount_selector();
+      if (shadow_selector_rc != 0) {
+          notify("PIZZA HEN V1-FAIL: ShadowMount selector rc=0x%X", shadow_selector_rc);
+          return 0;
+      }
+      ui_trace("PIZZA HEN V1: choose Stable 1.6beta16, Experimental 1.7alpha8, or skip ShadowMountPlus for dump_installer");
+      if (!wait_for_web_shadowmount_request(shadow_choice, sizeof(shadow_choice))) {
+          notify("PIZZA HEN V2-TIMEOUT: no ShadowMount selected");
+          return 0;
+      }
+      unlink("/data/PIZZA_HEN/runtime/shadowmount_request.txt");
+      unlink("/data/PIZZA_HEN/runtime/shadowmount_request.tmp");
+      if (!strcmp(shadow_choice, "experimental")) {
+          selected_shadow = shadowmount_experimental_start;
+          selected_shadow_size = shadowmount_experimental_size;
+          selected_shadow_name = "ShadowMountPlus-1.7alpha8-EXPERIMENTAL";
+          selected_shadow_choice = "experimental";
+      } else if (!strcmp(shadow_choice, "skip")) {
+          selected_shadow = nullptr;
+          selected_shadow_size = 0;
+          selected_shadow_name = "ShadowMountPlus-SKIPPED-DUMP-INSTALLER";
+          selected_shadow_choice = "skip";
+      }
+      ui_trace("PIZZA HEN V2: selected %s", selected_shadow_name);
+  }
+
   // R3: user-selected KStuff is ready. Register both independent Media entries now.
   // PZHN00001 = latest PIZZA HEN Toolbox.
   // PZHN00002 = Debug Services using the original v0.1 launcher/helper pipeline.
@@ -1780,22 +2101,31 @@ int main(void) {
 
   ui_trace("PIZZA HEN TDUAL: Media tiles ready: PZHN00001 Toolbox + PZHN00002 Debug Services");
 
-  ui_trace("PIZZA HEN S0: starting pristine ShadowMountPlus 1.6beta16");
-  if (shadowmount_size < 4 || shadowmount_start[0] != 0x7f ||
-      shadowmount_start[1] != 'E' || shadowmount_start[2] != 'L' ||
-      shadowmount_start[3] != 'F') {
-      notify("PIZZA HEN S1-FAIL: ShadowMount ELF invalid");
-      return -1;
+  if (!strcmp(selected_shadow_choice, "skip")) {
+      ui_trace("PIZZA HEN S0-SKIP: ShadowMountPlus intentionally not launched (EchoStretch dump_installer path)");
+      write_blob_file("/data/PIZZA_HEN/runtime/shadowmount_active.txt",
+                      selected_shadow_choice, strlen(selected_shadow_choice), 0666);
+      ui_trace("PIZZA HEN S6: selected KStuff + ShadowMount skip gate PASS; continuing to FTP/Debug");
+  } else {
+      ui_trace("PIZZA HEN S0: starting selected %s", selected_shadow_name);
+      if (selected_shadow_size < 4 || selected_shadow[0] != 0x7f ||
+          selected_shadow[1] != 'E' || selected_shadow[2] != 'L' ||
+          selected_shadow[3] != 'F') {
+          notify("PIZZA HEN S1-FAIL: selected ShadowMount ELF invalid");
+          return -1;
+      }
+      signal(SIGCHLD, SIG_DFL);
+      int shadow_spawn_rc = elfldr_spawn("/", STDOUT_FILENO, selected_shadow,
+                                         selected_shadow_name);
+      if (shadow_spawn_rc < 0) {
+          notify("PIZZA HEN S3-FAIL: selected ShadowMount spawn failed");
+          return 0;
+      }
+      write_blob_file("/data/PIZZA_HEN/runtime/shadowmount_active.txt",
+                      selected_shadow_choice, strlen(selected_shadow_choice), 0666);
+      sleep(3);
+      ui_trace("PIZZA HEN S6: selected KStuff + selected ShadowMount start gate PASS");
   }
-  signal(SIGCHLD, SIG_DFL);
-  int shadow_spawn_rc = elfldr_spawn("/", STDOUT_FILENO, shadowmount_start,
-                                     "ShadowMountPlus");
-  if (shadow_spawn_rc < 0) {
-      notify("PIZZA HEN S3-FAIL: ShadowMount spawn failed");
-      return 0;
-  }
-  sleep(3);
-  ui_trace("PIZZA HEN S6: selected KStuff + ShadowMount start gate PASS");
 
   // FIX26: Payload #1 after ShadowMount = upstream ftpsrv v0.21.
   // Keep the upstream ELF pristine and let the bootstrapper only own ordering.

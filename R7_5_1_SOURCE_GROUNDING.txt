@@ -1,7 +1,0 @@
-R7.5.1 SOURCE GROUNDING
-
-R7.2 bootstrapper/source/main.cpp: cf202070d73c50bcd5529c8895a93f9ef1132d07c397c51a5a560e91cd2b8419
-R7.5.1 bootstrapper/source/main.cpp: cf202070d73c50bcd5529c8895a93f9ef1132d07c397c51a5a560e91cd2b8419
-R7.5.1 daemon/source/main.cpp: 134805b8e09a461a72c5a289cf04be5d859ed1da40803465fd81c7b92c315adf
-
-Only automatic R7.3 Game Options startup preload call is rolled back.

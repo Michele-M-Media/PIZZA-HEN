@@ -36,7 +36,11 @@ ok('R5_CHEATS_LEGACY_ROW_RETIRED', '<link id="id_cheats"' not in xml)
 # Hardware-PASS R3 bridge and R4 Onion route code are frozen.
 ok('R5_V01_HELPER_EXACT', sha(SRC/'toolbox_action/src/main.c')=='8155569ab893e23d365b054d8c3075fcdebb6792b75f0ccf21d2bff33f76faf6')
 ok('R5_HOOKFUNCTIONS_R710_CHEATRUNNER_DELTA', 'MENU_ID_CHEATS' not in hook and '★ PIZZA HEN Cheats' not in hook and 'ITEM00001' in hook)
-ok('R5_BOOTSTRAPPER_R4_FROZEN', sha(SRC/'bootstrapper/source/main.cpp')=='cf202070d73c50bcd5529c8895a93f9ef1132d07c397c51a5a560e91cd2b8419')
+boot=(SRC/'bootstrapper/source/main.cpp').read_text(errors='ignore')
+if 'PIZZA HEN V0: ShadowMount selector stage' in boot:
+    ok('R5_BOOTSTRAPPER_R714_INTENTIONAL_SHADOW_SELECTOR_DELTA', 'PZHN00001' in boot and 'PZHN00002' in boot and 'kstuff-lite-1.10' in boot and 'PIZZA HEN F0: starting ftpsrv' in boot)
+else:
+    ok('R5_BOOTSTRAPPER_R4_FROZEN', sha(SRC/'bootstrapper/source/main.cpp')=='cf202070d73c50bcd5529c8895a93f9ef1132d07c397c51a5a560e91cd2b8419')
 daemon_msg=(SRC/'daemon/source/msg.cpp').read_text(errors='ignore')
 route_m=re.search(r'static const char \*pizzahen_debug_services_uri_for_current_firmware\(\) \{.*?\n\}',daemon_msg,re.S)
 cmd_m=re.search(r'bool cmd_enable_toolbox\(\)\{.*?\n\}\nvoid handleIPC',daemon_msg,re.S)

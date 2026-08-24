@@ -1,0 +1,13 @@
+PIZZA HEN v1.0 R7.18.1 — FULL I18N REPAIR
+
+Binding rule from this release forward:
+- every new PIZZA HEN user-visible title, description, selector label, status, error and notification must be added to all 31 supported console locales in the same changeset;
+- product/project names, version numbers, paths and TCP ports remain unchanged;
+- upstream third-party web interfaces opened by PIZZA HEN are not rewritten; PIZZA HEN-owned launch entries/statuses are localized.
+
+R7.18.1 coverage:
+- KStuff Base 1.6.7 selector: Base label, description, Base channel and corrected footer in 31 locales;
+- ShadowMount selector: Stable/Experimental/Skip labels, descriptions, authors, status/error/footer and Arabic RTL in 31 locales;
+- Toolbox: Homebrew Channel, APR EMU UPDATE, ELF Loader 0.24, BackPork 0.1, Garlic SaveMgr descriptions/status/error text in 31 locales;
+- PS5 service notifications: ELF Loader, BackPork and Garlic start/stop/failure status in 31 locales;
+- runtime logic and supplied ELF bytes are unchanged.

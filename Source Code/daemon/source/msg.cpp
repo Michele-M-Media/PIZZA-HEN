@@ -1456,7 +1456,7 @@ void handleIPC(struct clientArgs *client, std::string &inputStr,
   }
   case BREW_LAUNCH_DUMPER:{
     if (dumper_elf_size == 0) {
-      notify(true, "PIZZA HEN v0.1: app-dumper is not bundled");
+      notify(true, "PIZZA HEN v2.00: app-dumper is not bundled");
       reply(sender_app, true);
       break;
     }

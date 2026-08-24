@@ -9,6 +9,7 @@
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
+#include <sys/mount.h>
 #include <sys/un.h>
 #include <unistd.h>
 
@@ -35,6 +36,8 @@
 #define SHELL_CONTROL_REQUEST_TMP "/system_tmp/pizzahen_web_control.request.tmp"
 #define SHELL_CONTROL_ACK "/system_tmp/pizzahen_web_control.ack"
 #define DAEMON_BUFF_MAX 0x1000
+#define FAN_CONTROL_CONFIG_FILE "/data/fan_control.ini"
+#define FAN_CONTROL_CONFIG_TMP  "/data/fan_control.ini.pizzahen.tmp"
 
 #define BREW_RELOAD_SETTINGS      0x00C0FFEE
 #define BREW_TOGGLE_PS5DEBUG      0x000DE8E6
@@ -130,7 +133,198 @@ static int is_shell_key(const char*k){static const char*keys[]={
 
 static int eta_service_toggle(const char *key,int on,int cmd,int is_v2){int old=config_get_int(key,0);char json[96];if(cmd==BREW_UTIL_TOGGLE_DPI)snprintf(json,sizeof(json),"{ \"toggle\": %d, \"is_v2\": %d }",on?1:0,is_v2?1:0);else snprintf(json,sizeof(json),"{ \"toggle\": %d }",on?1:0);int rc=send_ipc(UTIL_IPC_SOC,cmd,json);if(rc)return rc;char v[2]={on?'1':'0',0};rc=config_set_numeric(key,v);if(rc){if(cmd==BREW_UTIL_TOGGLE_DPI)snprintf(json,sizeof(json),"{ \"toggle\": %d, \"is_v2\": %d }",old?1:0,is_v2?1:0);else snprintf(json,sizeof(json),"{ \"toggle\": %d }",old?1:0);(void)send_ipc(UTIL_IPC_SOC,cmd,json);return rc;}reload_daemons();return 0;}
 
-static int is_action_name(const char*s){static const char*a[]={"open","set","reload-settings","dpi1-on","dpi1-off","legacy-cmd-on","legacy-cmd-off","pkg-scan","games-list","launch-game","plugin-launch","plugin-stop","plugin-autostart","plugin-scan","payload-repo-refresh","payload-repo-install","pizza-overlay-stop","kstuff-pause","store-download","elfldr-start","download-kstuff","remove-kstuff","kstuff-autoload-on","kstuff-autoload-off","testkit","dumper-launch","install-store","ps5debug-on","ps5debug-off","remote-play-pin","debug-services-open","game-options-ensure","locale-set"};if(!s)return 0;for(size_t i=0;i<sizeof(a)/sizeof(a[0]);i++)if(!strcmp(s,a[i]))return 1;return 0;}
+static int pizzahen_tcp_port_ready(unsigned short port){
+  int fd=socket(AF_INET,SOCK_STREAM,0);
+  if(fd<0)return 0;
+  struct sockaddr_in sa; memset(&sa,0,sizeof(sa));
+  sa.sin_family=AF_INET; sa.sin_addr.s_addr=htonl(INADDR_LOOPBACK); sa.sin_port=htons(port);
+  int ok=(connect(fd,(struct sockaddr*)&sa,sizeof(sa))==0); close(fd); return ok;
+}
+static unsigned short webfilemanager_find_port(void){
+  for(unsigned short p=8888;p<8920;p++)if(pizzahen_tcp_port_ready(p))return p;
+  return 0;
+}
+static int pegasus_port_ready(void){return pizzahen_tcp_port_ready(6970);}
+static int spectrum_port_ready(void){return pizzahen_tcp_port_ready(7575);}
+
+static int elfldr024_port_ready(void){
+  int fd=socket(AF_INET,SOCK_STREAM,0);
+  if(fd<0)return 0;
+  struct sockaddr_in sa; memset(&sa,0,sizeof(sa));
+  sa.sin_family=AF_INET;
+  sa.sin_addr.s_addr=htonl(INADDR_LOOPBACK);
+  sa.sin_port=htons(9021);
+  int ok=(connect(fd,(struct sockaddr*)&sa,sizeof(sa))==0);
+  close(fd);
+  return ok;
+}
+static int garlic_savemgr_port_ready(void){
+  int fd=socket(AF_INET,SOCK_STREAM,0);
+  if(fd<0)return 0;
+  struct sockaddr_in sa; memset(&sa,0,sizeof(sa));
+  sa.sin_family=AF_INET;
+  sa.sin_addr.s_addr=htonl(INADDR_LOOPBACK);
+  sa.sin_port=htons(8082);
+  int ok=(connect(fd,(struct sockaddr*)&sa,sizeof(sa))==0);
+  close(fd);
+  return ok;
+}
+static int airpsx_port_ready(void){
+  int fd=socket(AF_INET,SOCK_STREAM,0);
+  if(fd<0)return 0;
+  struct sockaddr_in sa; memset(&sa,0,sizeof(sa));
+  sa.sin_family=AF_INET;
+  sa.sin_addr.s_addr=htonl(INADDR_LOOPBACK);
+  sa.sin_port=htons(1214);
+  int ok=(connect(fd,(struct sockaddr*)&sa,sizeof(sa))==0);
+  close(fd);
+  return ok;
+}
+static int ps5upload_port_ready(void){
+  int fd=socket(AF_INET,SOCK_STREAM,0);
+  if(fd<0)return 0;
+  struct sockaddr_in sa; memset(&sa,0,sizeof(sa));
+  sa.sin_family=AF_INET;
+  sa.sin_addr.s_addr=htonl(INADDR_LOOPBACK);
+  sa.sin_port=htons(9114);
+  int ok=(connect(fd,(struct sockaddr*)&sa,sizeof(sa))==0);
+  close(fd);
+  return ok;
+}
+static int gamecompressor_port_ready(void){
+  int fd=socket(AF_INET,SOCK_STREAM,0);
+  if(fd<0)return 0;
+  struct sockaddr_in sa; memset(&sa,0,sizeof(sa));
+  sa.sin_family=AF_INET;
+  sa.sin_addr.s_addr=htonl(INADDR_LOOPBACK);
+  sa.sin_port=htons(5910);
+  int ok=(connect(fd,(struct sockaddr*)&sa,sizeof(sa))==0);
+  close(fd);
+  return ok;
+}
+
+
+/* R7.25.2.9: read-only storage snapshot for the Toolbox storage screen.
+   Package Installer transport/scan/install paths are untouched.  Mounts are
+   taken from the kernel mount table so disconnected /mnt directories are not
+   reported as attached devices. */
+#define STORAGE_STATUS_FILE "/data/PIZZA_HEN/runtime/storage_status.json"
+
+static const struct statfs *storage_find_mount(const struct statfs *fs, int count, const char *path) {
+  if(!fs||count<=0||!path)return NULL;
+  for(int i=0;i<count;i++)if(!strcmp(fs[i].f_mntonname,path))return &fs[i];
+  return NULL;
+}
+
+static int storage_emit_volume(FILE *out, int *first, const char *kind, int slot, const char *path, const struct statfs *s) {
+  if(!out||!first||!kind||!path||!s)return 1;
+  const unsigned long long bsize=(unsigned long long)s->f_bsize;
+  const unsigned long long blocks=(unsigned long long)s->f_blocks;
+  const unsigned long long bfree=(unsigned long long)s->f_bfree;
+  long long bavail_signed=(long long)s->f_bavail;
+  if(bavail_signed<0)bavail_signed=0;
+  const unsigned long long bavail=(unsigned long long)bavail_signed;
+  const unsigned long long total=blocks*bsize;
+  const unsigned long long free_bytes=bfree*bsize;
+  const unsigned long long available=bavail*bsize;
+  const unsigned long long used=total>=free_bytes?total-free_bytes:0;
+  if(!*first)fputc(',',out);
+  *first=0;
+  fprintf(out,"{\"kind\":\"%s\",\"slot\":%d,\"path\":\"%s\",\"total\":%llu,\"used\":%llu,\"free\":%llu,\"available\":%llu}",
+          kind,slot,path,total,used,free_bytes,available);
+  return ferror(out)?2:0;
+}
+
+static int write_storage_snapshot(void) {
+  ensure_dirs();
+  int count=getfsstat(NULL,0,MNT_NOWAIT);
+  if(count<=0)return 61;
+  struct statfs *fs=(struct statfs*)calloc((size_t)count,sizeof(*fs));
+  if(!fs)return 62;
+  int got=getfsstat(fs,(long)((size_t)count*sizeof(*fs)),MNT_NOWAIT);
+  if(got<0){free(fs);return 63;}
+  FILE *out=fopen(STORAGE_STATUS_FILE,"w");
+  if(!out){free(fs);return 64;}
+  fputs("{\"volumes\":[",out);
+  int first=1;
+  const struct statfs *m=storage_find_mount(fs,got,"/user");
+  if(m)storage_emit_volume(out,&first,"internal",0,"/user",m);
+  for(int i=0;i<2;i++){
+    char path[32];snprintf(path,sizeof(path),"/mnt/ext%d",i);
+    m=storage_find_mount(fs,got,path);
+    if(m)storage_emit_volume(out,&first,"nvme",i,path,m);
+  }
+  for(int i=0;i<8;i++){
+    char path[32];snprintf(path,sizeof(path),"/mnt/usb%d",i);
+    m=storage_find_mount(fs,got,path);
+    if(m)storage_emit_volume(out,&first,"usb",i,path,m);
+  }
+  fputs("]}\n",out);
+  fflush(out);fsync(fileno(out));
+  int rc=ferror(out)?65:0;
+  fclose(out);free(fs);chmod(STORAGE_STATUS_FILE,0666);
+  return rc;
+}
+
+static int fan_control_target_allowed(const char *value){
+  if(!numeric_allowed(value))return 0;
+  int n=atoi(value);
+  return n>=30&&n<=90;
+}
+static int fan_control_line_is_key(const char *line,const char *key){
+  if(!line||!key)return 0;
+  while(*line==' '||*line=='\t')line++;
+  size_t n=strlen(key);
+  if(strncmp(line,key,n))return 0;
+  line+=n;
+  while(*line==' '||*line=='\t')line++;
+  return *line=='=';
+}
+static int fan_control_set_target(const char *value){
+  if(!fan_control_target_allowed(value))return 70;
+  FILE *in=fopen(FAN_CONTROL_CONFIG_FILE,"r");
+  FILE *out=fopen(FAN_CONTROL_CONFIG_TMP,"w");
+  if(!out){if(in)fclose(in);return 71;}
+  int have_target=0,have_unit=0;
+  char line[512];
+
+  if(in){
+    while(fgets(line,sizeof(line),in)){
+      if(fan_control_line_is_key(line,"target_temperature")){
+        fprintf(out,"target_temperature=%s\n",value);
+        have_target=1;
+        continue;
+      }
+      if(fan_control_line_is_key(line,"use_fahrenheit")){
+        fputs("use_fahrenheit=0\n",out);
+        have_unit=1;
+        continue;
+      }
+      fputs(line,out);
+    }
+    fclose(in);
+    if(!have_unit)fputs("use_fahrenheit=0\n",out);
+    if(!have_target)fprintf(out,"target_temperature=%s\n",value);
+  }else{
+    /* These are the payload's documented defaults plus the user-selected
+       Celsius target.  PIZZA HEN does not alter the ELF itself. */
+    fputs("enable=1\n",out);
+    fputs("use_fahrenheit=0\n",out);
+    fprintf(out,"target_temperature=%s\n",value);
+    fputs("show_status=0\n",out);
+    fputs("interval=7\n",out);
+    fputs("xmb_target_temperature=0\n",out);
+  }
+
+  fflush(out);
+  if(fsync(fileno(out))!=0){fclose(out);unlink(FAN_CONTROL_CONFIG_TMP);return 72;}
+  if(fclose(out)!=0){unlink(FAN_CONTROL_CONFIG_TMP);return 73;}
+  if(rename(FAN_CONTROL_CONFIG_TMP,FAN_CONTROL_CONFIG_FILE)!=0){unlink(FAN_CONTROL_CONFIG_TMP);return 74;}
+  chmod(FAN_CONTROL_CONFIG_FILE,0666);
+  return 0;
+}
+
+static int is_action_name(const char*s){static const char*a[]={"open","set","reload-settings","dpi1-on","dpi1-off","legacy-cmd-on","legacy-cmd-off","pkg-scan","storage-scan","games-list","launch-game","plugin-launch","plugin-stop","plugin-autostart","plugin-scan","payload-repo-refresh","payload-repo-install","pizza-overlay-stop","kstuff-pause","store-download","elfldr-start","elfldr-status","garlic-status","airpsx-status","ps5upload-status","gamecompressor-status","webfilemanager-status","pegasus-status","spectrum-status","download-kstuff","remove-kstuff","kstuff-autoload-on","kstuff-autoload-off","testkit","dumper-launch","install-store","ps5debug-on","ps5debug-off","remote-play-pin","debug-services-open","game-options-ensure","fan-control-set-target","locale-set"};if(!s)return 0;for(size_t i=0;i<sizeof(a)/sizeof(a[0]);i++)if(!strcmp(s,a[i]))return 1;return 0;}
 static int find_action_index(int argc, char **argv) {
   if (argc > 0 && is_action_name(argv[0])) return 0;
   if (argc > 1 && is_action_name(argv[1])) return 1;
@@ -177,6 +371,8 @@ int main(int argc, char **argv) {
   /* PIZZA HEN v1.0: legacy Toolbox cheat IPC actions retired.
      CheatRunner v0.17 owns the active cheat API on 127.0.0.1:9999. */
   if(!strcmp(action,"pkg-scan"))return finish("ok:pkg-scan","fail:pkg-scan",send_ipc(UTIL_IPC_SOC,BREW_UTIL_SCAN_USB_PKGS,"{}"));
+  if(!strcmp(action,"storage-scan"))return finish("ok:storage-scan","fail:storage-scan",write_storage_snapshot());
+  if(!strcmp(action,"fan-control-set-target")){const char*v=action_arg(argc,argv,action_index,1);return finish("ok:fan-control-set-target","fail:fan-control-set-target",fan_control_set_target(v));}
   if(!strcmp(action,"games-list"))return finish("ok:games-list","fail:games-list",send_ipc(UTIL_IPC_SOC,BREW_UTIL_GET_GAMES_LIST,"{ \"shortcut\": 0 }"));
   if(!strcmp(action,"launch-game")){const char*id=action_arg(argc, argv, action_index, 1);if(!id)return finish("ok:launch-game","fail:launch-game-id",7);char j[512];snprintf(j,sizeof(j),"{ \"button_id\": \"%s\" }",id);return finish("ok:launch-game","fail:launch-game",send_ipc(UTIL_IPC_SOC,BREW_UTIL_LAUNCH_GAME_BY_BUTTON_ID,j));}
   if(!strcmp(action,"plugin-launch")){const char *plugin_path = action_arg(argc, argv, action_index, 1);const char *title_id = action_arg(argc, argv, action_index, 2);if(!plugin_path||strchr(plugin_path,'"'))return finish("ok:plugin-launch","fail:plugin-args",7);if(!title_id||!*title_id){const char *slash=strrchr(plugin_path,'/');title_id=slash?slash+1:plugin_path;}if(strchr(title_id,'"'))return finish("ok:plugin-launch","fail:plugin-title",7);char j[DAEMON_BUFF_MAX];snprintf(j,sizeof(j),"{ \"plugin_path\": \"%s\", \"title_id\": \"%s\" }",plugin_path,title_id);return finish("ok:plugin-launch","fail:plugin-launch",send_ipc(UTIL_IPC_SOC,BREW_UTIL_LAUNCH_PLUGIN,j));}
@@ -192,6 +388,14 @@ int main(int argc, char **argv) {
   if(!strcmp(action,"testkit"))return finish("ok:testkit","fail:testkit",send_ipc(CRIT_IPC_SOC,BREW_TESTKIT_CHECK,"{}"));
   if(!strcmp(action,"dumper-launch"))return finish("ok:dumper-launch","fail:dumper-launch",send_ipc(CRIT_IPC_SOC,BREW_LAUNCH_DUMPER,"{}"));
   if(!strcmp(action,"install-store"))return finish("ok:install-store","fail:install-store",send_ipc(CRIT_IPC_SOC,BREW_INSTALL_THE_STORE,"{}"));
+  if(!strcmp(action,"elfldr-status"))return finish("ok:elfldr-status","fail:elfldr-status",elfldr024_port_ready()?0:1);
+  if(!strcmp(action,"garlic-status"))return finish("ok:garlic-status","fail:garlic-status",garlic_savemgr_port_ready()?0:1);
+  if(!strcmp(action,"airpsx-status"))return finish("ok:airpsx-status","fail:airpsx-status",airpsx_port_ready()?0:1);
+  if(!strcmp(action,"ps5upload-status"))return finish("ok:ps5upload-status","fail:ps5upload-status",ps5upload_port_ready()?0:1);
+  if(!strcmp(action,"gamecompressor-status"))return finish("ok:gamecompressor-status","fail:gamecompressor-status",gamecompressor_port_ready()?0:1);
+  if(!strcmp(action,"webfilemanager-status")){unsigned short p=webfilemanager_find_port();char ok[64];snprintf(ok,sizeof(ok),"ok:webfilemanager-status:%u",(unsigned)p);return finish(ok,"fail:webfilemanager-status",p?0:1);}
+  if(!strcmp(action,"pegasus-status"))return finish("ok:pegasus-status","fail:pegasus-status",pegasus_port_ready()?0:1);
+  if(!strcmp(action,"spectrum-status"))return finish("ok:spectrum-status","fail:spectrum-status",spectrum_port_ready()?0:1);
   if(!strcmp(action,"elfldr-start"))return finish("ok:elfldr-start","fail:elfldr-start",send_ipc(UTIL_IPC_SOC,BREW_UTIL_LAUNCH_ELFLDR,"{}"));
   return finish("ok:noop","fail:unknown-action",7);
 }

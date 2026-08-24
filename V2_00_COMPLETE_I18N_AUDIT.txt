@@ -1,0 +1,46 @@
+PIZZA HEN v2.00 — COMPLETE I18N HARDWARE BASELINE
+
+Baseline:
+  R7.25.2.16.1 POORDS4 STATIC GATE REPAIR (hardware-working user checkpoint)
+
+Runtime preservation:
+  - All 127 named JavaScript functions in toolbox_launcher.html are byte-identical to 16.1.
+  - Package Installer scanPkgs/loadPkgCatalog/installPkg function hashes remain frozen.
+  - Debug Services launcher remains byte-identical to the restored hardware-working bridge.
+  - All 91 ELF files in the project remain byte-identical to 16.1.
+  - No service launch/stop, /hbldr, websrv, Package Installer, PoorDS4, Fan Control,
+    KStuff, ShadowMount, Storage, Themes Avatar, CheatRunner, or payload-manager logic changed.
+
+I18N audit:
+  - Toolbox: 31 locales with identical keysets.
+  - Existing baseline i18n runtime preserved; only PH_I18N and PH_BASE_MAP data expanded.
+  - Previously hard-coded Toolbox descriptions/status labels are now explicitly mapped.
+  - PoorDS4 Toolbox UI is localized in all 31 locales.
+  - Fan Target / ps5-fan-control v0.3 Toolbox UI is localized in all 31 locales.
+  - KStuff selector: 31 locales preserved.
+  - ShadowMount selector: 31 locales preserved.
+  - Native ShellUI locale table: 31 locales preserved.
+  - Service-notification locale table: 31 locales preserved.
+  - Arabic RTL preserved.
+
+Intentional hardware-frozen exception:
+  debug_services_launcher.html remains byte-for-byte at SHA-256
+  7f7134593eefa9628bc581eebe3a7fc66f40cba3bb8f9447ebd641bfe58eb399.
+  Its launcher bridge is not modified because this exact asset was restored after a hardware regression.
+  The Debug Services shortcut/native title remains covered by the existing 31-locale PIZZA HEN UI.
+
+Third-party payload text:
+  Text generated internally by frozen third-party ELF binaries is not rewritten or translated by
+  PIZZA HEN. Their binaries remain byte-identical by project rule.
+
+Validation performed in checkpoint creation:
+  - New complete-i18n gate: 24/24 PASS.
+  - All 58 Python static tests invoked by the build script: PASS (20 + 23 + 15 batches).
+  - toolbox_launcher.html JavaScript syntax: PASS.
+  - debug_services_launcher.html JavaScript syntax: PASS (file itself remains frozen).
+  - shadowmount_selector.html JavaScript syntax: PASS.
+  - kstuff_selector.js syntax: PASS.
+  - build_v01_rebase_latest_toolbox.sh bash syntax: PASS.
+
+Important terminology:
+  STATIC-PASS only until the WSL build runs. No compile-PASS or PS5 hardware-PASS is claimed.

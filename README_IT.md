@@ -1,62 +1,53 @@
-# 🍕 PIZZA HEN v1.0 — Italiano
+# 🍕 PIZZA HEN — README Italiano
 
-**PIZZA HEN** è un ambiente homebrew all-in-one per PS5 mantenuto da **Michele Media**.
+**PIZZA HEN** è un ambiente homebrew sperimentale all-in-one per PS5, mantenuto da **Michele Media**.
 
-Questa è la baseline pubblica **v1.0**, scelta dopo la validazione hardware del progetto con Toolbox, selector KStuff, ShadowMount, CheatRunner 0.17, DPIv2, FTP, ps5debug-NG, build Multi-SDK, interfaccia multilingua e routing multi-firmware.
+La base sorgente deriva da etaHEN 2.5B GPLv3, ma il progetto è stato riorganizzato con runtime, branding, Toolbox, selector KStuff, integrazione ShadowMount, servizi automatici, Game Manager, cheats, App Plugin Manager e politica di build Multi-SDK propri.
 
-## Stato release
+## Stato
 
-**v1.0 — checkpoint pubblico.**
-
-Il percorso **DPIv2 12.x è confermato su hardware dal firmware 12.20 al 12.70**. La scorciatoia CheatRunner nel menu Game Options presente in questo checkpoint va invece considerata **sperimentale** e non è necessaria per il funzionamento principale di PIZZA HEN.
+**v0.1 beta / pre-release.** Le funzioni più recenti, in particolare il lifecycle dell'App Plugin Manager, vanno considerate ancora beta.
 
 ## Funzioni principali
 
-- PIZZA HEN Toolbox nell'area Media della PS5.
-- Selector grafico KStuff:
-  - KStuff Lite 1.10
-  - KStuff DR 1.2
-- Un solo motore KStuff per sessione.
-- ShadowMountPlus 1.6beta16 mantenuto come baseline upstream congelata.
-- CheatRunner 0.17 integrato nella Toolbox.
-- DPIv2 con repair MetaInfo per firmware 12.20+.
-- FTP e ps5debug-NG automatici.
-- UI multilingua basata sulla lingua di sistema PS5.
-- Build Multi-SDK / capability-based.
-- Routing ShellCore / Debug Services multi-firmware.
-
-## Compatibilità DPIv2
-
-Per il ramo DPIv2 12.x di questa release la validazione hardware è confermata su:
-
-**12.20 → 12.70**
-
-Vedi [`DPIV2_12X_ETAHEN26B_METAINFO_REPAIR.md`](DPIV2_12X_ETAHEN26B_METAINFO_REPAIR.md).
+- Icona PIZZA HEN Toolbox nei Contenuti multimediali.
+- Selector grafico KStuff Lite 1.09 / KStuff DR 1.2.
+- Un solo KStuff per sessione.
+- ShadowMountPlus 1.6beta16 preservato come runtime upstream congelato.
+- FTP automatico.
+- ps5debug-NG automatico.
+- Game Manager diretto su Itemzflow se `ITEM00001` è installato.
+- Repository cheats unificati.
+- Overlay GPU / CPU / RAM disattivato di default.
+- App Plugin Manager beta con `[DEFAULT]`, sezioni Title ID e `?autoload`.
+- Build Multi-SDK senza dipendenza obbligatoria da una singola release.
 
 ## Build
 
-Windows + WSL:
+Windows + WSL: `RUN_BUILD_PIZZA_HEN_v0.1.bat`  
+Linux / WSL / host compatibile: `./RUN_BUILD_PIZZA_HEN.sh`
 
-```text
-RUN_BUILD_R713_CHEATRUNNER_GAME_OPTIONS_SHORTCUT.bat
-```
+Per la policy SDK completa vedi `SDK_COMPATIBILITY.txt`.
 
-Linux / WSL:
+## Nota Itemzflow
 
-```bash
-./RUN_BUILD_PIZZA_HEN.sh
-```
+Il PKG di Itemzflow non viene redistribuito nel repository. Va installato separatamente dalla fonte ufficiale. PIZZA HEN usa `ITEM00001` per l'integrazione diretta del Game Manager.
 
-## Licenza e crediti
+## Licenza
 
-Il codice derivato GPL mantiene la **GNU GPLv3**. I componenti di terze parti conservano le rispettive licenze e attribuzioni.
-
-Vedi `LICENSE`, `CREDITS.md` e `THIRD_PARTY.md`.
-
-## Nota
-
-Usare il software solo su hardware e software che si è autorizzati a modificare. Fare sempre un backup dei dati importanti.
-
----
+Il codice GPL derivato mantiene la GNU GPLv3 e le attribuzioni upstream. Vedi `LICENSE`, `CREDITS.md` e `THIRD_PARTY.md`.
 
 **Project direction / branding:** Michele Media 🍕🐓
+
+
+## R7.2 CE-108262 repair
+Automatic R6 ShellUI preload has been removed. Daemon startup files are restored byte-for-byte to R5; R7.1 UTIL service backend remains. See READ_THIS_R7_2_CE108262.txt.
+
+
+## CheatRunner 0.17 integration
+
+The legacy PIZZA HEN/etaHEN cheat route is retired. The Toolbox now builds and launches the vendored CheatRunner v0.17 source on demand, embeds its upstream dashboard on port 9999, and deep-links the currently running Title ID when available. See `CHEATRUNNER_INTEGRATION.md`.
+
+## DPIv2 12.20+ — etaHEN 2.6B MetaInfo repair
+La build mantiene congelato il percorso DPIv2 gia usato fino a 12.00. Solo per le installazioni URL su 12.20+ il `MetaInfo` passato a `sceAppInstUtilInstallByPackage` viene azzerato e valorizzato esclusivamente in `uri`, replicando il call-shape osservato nel binario etaHEN 2.6B appena fornito. Debug Services/Onion, porta 12800 e upload PKG restano invariati. Vedi `DPIV2_12X_ETAHEN26B_METAINFO_REPAIR.md`.
+

@@ -59,6 +59,7 @@ set_target_properties(CheatRunner PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${PROJECT
 add_subdirectory(daemon)
 add_subdirectory(util)
 add_subdirectory(selector_action)
+add_subdirectory(shadow_selector_action)
 add_subdirectory(toolbox_action)
 add_subdirectory(toolbox_api)
 add_subdirectory(bootstrapper)

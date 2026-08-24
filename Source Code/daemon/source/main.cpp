@@ -127,6 +127,14 @@ extern "C" {
     extern const unsigned int pizzahen_fan_target_80c_size;
     extern uint8_t pizzahen_fan_target_85c_start[];
     extern const unsigned int pizzahen_fan_target_85c_size;
+    extern uint8_t pizzahen_fan_control_v03_start[];
+    extern const unsigned int pizzahen_fan_control_v03_size;
+    extern uint8_t pizzahen_poords4_main_start[];
+    extern const unsigned int pizzahen_poords4_main_size;
+    extern uint8_t pizzahen_poords4_status_start[];
+    extern const unsigned int pizzahen_poords4_status_size;
+    extern uint8_t pizzahen_poords4_stop_start[];
+    extern const unsigned int pizzahen_poords4_stop_size;
     extern uint8_t pizzahen_cheatrunner_start[];
     extern const unsigned int pizzahen_cheatrunner_size;
     extern uint8_t pizzahen_phu_overlay_start[];
@@ -355,6 +363,13 @@ static void pizzahen_install_r74_runtime_assets() {
     (void)pizzahen_write_embedded_runtime_file("/data/PIZZA_HEN/payloads/fan_target_75c.elf", pizzahen_fan_target_75c_start, pizzahen_fan_target_75c_size);
     (void)pizzahen_write_embedded_runtime_file("/data/PIZZA_HEN/payloads/fan_target_80c.elf", pizzahen_fan_target_80c_start, pizzahen_fan_target_80c_size);
     (void)pizzahen_write_embedded_runtime_file("/data/PIZZA_HEN/payloads/fan_target_85c.elf", pizzahen_fan_target_85c_start, pizzahen_fan_target_85c_size);
+    // R7.25.2.14 Option 2: upstream ps5-fan-control v0.3 ELF, byte-exact.
+    (void)pizzahen_write_embedded_runtime_file("/data/PIZZA_HEN/payloads/ps5-fan-control-v0.3.elf", pizzahen_fan_control_v03_start, pizzahen_fan_control_v03_size);
+    // R7.25.2.16 PoorDS4 RC38: the three upstream release ELFs are deployed byte-exact.
+    // PIZZA HEN does not patch, wrap, or replace their original runtime behavior.
+    (void)pizzahen_write_embedded_runtime_file("/data/PIZZA_HEN/payloads/PoorDS4rc38.elf", pizzahen_poords4_main_start, pizzahen_poords4_main_size);
+    (void)pizzahen_write_embedded_runtime_file("/data/PIZZA_HEN/payloads/PoorDS4-status.elf", pizzahen_poords4_status_start, pizzahen_poords4_status_size);
+    (void)pizzahen_write_embedded_runtime_file("/data/PIZZA_HEN/payloads/PoorDS4-stop.elf", pizzahen_poords4_stop_start, pizzahen_poords4_stop_size);
     // CheatRunner v0.17 is source-built and deployed as the only active cheat backend.
     // It is intentionally NOT auto-started: Toolbox starts it on demand.
     (void)pizzahen_write_embedded_runtime_file("/data/PIZZA_HEN/payloads/CheatRunner.elf", pizzahen_cheatrunner_start, pizzahen_cheatrunner_size);
@@ -479,7 +494,7 @@ int main() {
      "        }\n"
      "      },\n"
      "      \"message\": {\n"
-     "        \"body\": \"PIZZA HEN v1.0 | Michele Media\"\n"
+     "        \"body\": \"PIZZA HEN v2.00 | Michele Media\"\n"
      "      },\n"
      "      \"subMessage\": {\n"
      "        \"body\": \"Italian Homebrew Environment | Game Manager Ready\"\n"
@@ -517,7 +532,7 @@ int main() {
 	sceNotificationSend(0xFE, true, json_payload.c_str());
 
 
-    etaHEN_log("PIZZA HEN v1.0 startup complete; Game Manager bridge ready");
+    etaHEN_log("PIZZA HEN v2.00 startup complete; Game Manager bridge ready");
 
     // Launch the appropriate app based on configuration
     const char *URI = nullptr;

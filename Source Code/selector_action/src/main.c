@@ -10,7 +10,7 @@
 #define REQUEST_FILE PIZZA_RUNTIME_DIR "/kstuff_request.txt"
 
 static int valid_choice(const char *s) {
-    return s && (!strcmp(s, "lite") || !strcmp(s, "dr"));
+    return s && (!strcmp(s, "lite") || !strcmp(s, "dr") || !strcmp(s, "base"));
 }
 
 int main(int argc, char **argv) {

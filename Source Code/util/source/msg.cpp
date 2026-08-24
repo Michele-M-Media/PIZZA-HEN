@@ -67,6 +67,53 @@ extern char ip_address[];
 
 int DaemonSocket = 0;
 
+/* R7.18.1 PIZZA HEN i18n-first rule: user-visible service notifications
+   follow the same 31 console locales as the Toolbox. Product names and TCP
+   numbers remain language-neutral; status/error prose is localized. */
+struct PhServiceNotifyLang { const char* code; const char* started; const char* stopped; const char* failed; const char* deploy_failed; };
+static const PhServiceNotifyLang g_ph_service_notify[] = {
+  {"en-US", "Started", "Stopped", "Failed to start", "Unable to deploy payload"},
+  {"en-GB", "Started", "Stopped", "Failed to start", "Unable to deploy payload"},
+  {"it-IT", "Avviato", "Arrestato", "Avvio non riuscito", "Impossibile distribuire il payload"},
+  {"fr-FR", "Démarré", "Arrêté", "Échec du démarrage", "Impossible de déployer le payload"},
+  {"fr-CA", "Démarré", "Arrêté", "Échec du démarrage", "Impossible de déployer le payload"},
+  {"de-DE", "Gestartet", "Gestoppt", "Start fehlgeschlagen", "Payload konnte nicht bereitgestellt werden"},
+  {"es-ES", "Iniciado", "Detenido", "No se pudo iniciar", "No se pudo desplegar el payload"},
+  {"es-419", "Iniciado", "Detenido", "No se pudo iniciar", "No se pudo desplegar el payload"},
+  {"pt-BR", "Iniciado", "Parado", "Falha ao iniciar", "Não foi possível implantar o payload"},
+  {"pt-PT", "Iniciado", "Parado", "Falha ao iniciar", "Não foi possível disponibilizar o payload"},
+  {"nl-NL", "Gestart", "Gestopt", "Start mislukt", "Payload kon niet worden geplaatst"},
+  {"da-DK", "Startet", "Stoppet", "Start mislykkedes", "Payload kunne ikke installeres"},
+  {"sv-SE", "Startad", "Stoppad", "Start misslyckades", "Payload kunde inte distribueras"},
+  {"no-NO", "Startet", "Stoppet", "Start mislyktes", "Payload kunne ikke distribueres"},
+  {"fi-FI", "Käynnistetty", "Pysäytetty", "Käynnistys epäonnistui", "Payloadia ei voitu ottaa käyttöön"},
+  {"pl-PL", "Uruchomiono", "Zatrzymano", "Nie udało się uruchomić", "Nie można wdrożyć payloadu"},
+  {"cs-CZ", "Spuštěno", "Zastaveno", "Spuštění se nezdařilo", "Payload nelze nasadit"},
+  {"ro-RO", "Pornit", "Oprit", "Pornirea a eșuat", "Payload-ul nu a putut fi instalat"},
+  {"hu-HU", "Elindítva", "Leállítva", "Az indítás sikertelen", "A payload nem telepíthető"},
+  {"el-GR", "Εκκινήθηκε", "Σταμάτησε", "Αποτυχία εκκίνησης", "Δεν ήταν δυνατή η εγκατάσταση του payload"},
+  {"tr-TR", "Başlatıldı", "Durduruldu", "Başlatma başarısız", "Payload dağıtılamadı"},
+  {"ru-RU", "Запущено", "Остановлено", "Не удалось запустить", "Не удалось развернуть payload"},
+  {"uk-UA", "Запущено", "Зупинено", "Не вдалося запустити", "Не вдалося розгорнути payload"},
+  {"id-ID", "Dimulai", "Dihentikan", "Gagal memulai", "Payload tidak dapat diterapkan"},
+  {"vi-VN", "Đã khởi động", "Đã dừng", "Khởi động thất bại", "Không thể triển khai payload"},
+  {"ja-JP", "開始しました", "停止しました", "開始に失敗しました", "payload を配置できません"},
+  {"ko-KR", "시작됨", "중지됨", "시작 실패", "payload를 배포할 수 없습니다"},
+  {"zh-Hans", "已启动", "已停止", "启动失败", "无法部署 payload"},
+  {"zh-Hant", "已啟動", "已停止", "啟動失敗", "無法部署 payload"},
+  {"ar-SA", "تم التشغيل", "تم الإيقاف", "فشل التشغيل", "تعذر نشر payload"},
+  {"th-TH", "เริ่มแล้ว", "หยุดแล้ว", "เริ่มไม่สำเร็จ", "ไม่สามารถติดตั้ง payload ได้"},
+};
+static const PhServiceNotifyLang* ph_service_notify_lang() {
+  std::string locale;
+  const char* paths[] = {"/user/data/PIZZA_HEN/runtime/ui_locale.txt", "/data/PIZZA_HEN/runtime/ui_locale.txt"};
+  for (const char* p : paths) { std::ifstream f(p); if (f.good() && std::getline(f, locale)) break; }
+  while (!locale.empty() && (locale.back()=='\r' || locale.back()=='\n' || locale.back()==' ' || locale.back()=='\t')) locale.pop_back();
+  for (const auto& r : g_ph_service_notify) if (locale == r.code) return &r;
+  for (const auto& r : g_ph_service_notify) if (!strcmp(r.code, "en-US")) return &r;
+  return &g_ph_service_notify[0];
+}
+
 bool startDirectPKGInstaller(bool is_v2);
 bool if_exists(const char *path);
 
@@ -447,13 +494,71 @@ void handleIPC(struct clientArgs *client, std::string &inputStr,
     etaHEN_log("Launching %s (TID: %s)", plugin_path.c_str(),
                title_id.c_str());
     if (!load_plugin(plugin_path.c_str())) {
-      notify(true, "Failed to Load in\nPath: %s\nTID: %s",
-             plugin_path.c_str(), title_id.c_str());
+      const auto* nt = ph_service_notify_lang();
+      if (plugin_path == "/data/PIZZA_HEN/payloads/ps5-backpork.elf")
+        notify(true, "BackPork 0.1 — %s", nt->failed);
+      else if (plugin_path == "/data/PIZZA_HEN/payloads/garlic-savemgr.elf")
+        notify(true, "Garlic SaveMgr — %s\nTCP 8082", nt->failed);
+      else if (plugin_path == "/data/PIZZA_HEN/payloads/airpsx_v0.19.elf")
+        notify(true, "AirPSX 0.19 — %s\nTCP 1214", nt->failed);
+      else if (plugin_path == "/data/PIZZA_HEN/payloads/ps5upload_v5.4.8.elf")
+        notify(true, "PS5Upload 5.4.8 — %s\nTCP 9113/9114", nt->failed);
+      else if (plugin_path == "/data/PIZZA_HEN/payloads/ps5-fw-spoof_v26616621599.elf")
+        notify(true, "PS5 FW Spoof — %s", nt->failed);
+      else if (plugin_path == "/data/PIZZA_HEN/payloads/np-fake-signin_v1.3.elf")
+        notify(true, "NP Fake Signin 1.3 — %s", nt->failed);
+      else if (plugin_path == "/data/PIZZA_HEN/payloads/webkit-autoloader-installer_v0.4.0-pre-00e1028.elf")
+        notify(true, "WebKit Autoloader Installer — %s\nTCP 18181", nt->failed);
+      else if (plugin_path == "/data/PIZZA_HEN/payloads/ps5-app-dumper_v1.11.elf")
+        notify(true, "PS5 App Dumper 1.11 — %s", nt->failed);
+      else if (plugin_path == "/data/PIZZA_HEN/payloads/rp-get-pin.elf")
+        notify(true, "Remote Play — %s", nt->failed);
+      else if (plugin_path == "/data/PIZZA_HEN/payloads/Chukei_DNS_v0.9.0.elf")
+        notify(true, "Chukei DNS 0.9.0 — %s", nt->failed);
+      else if (plugin_path == "/data/PIZZA_HEN/payloads/nanoDNS_v0.4.elf")
+        notify(true, "nanoDNS 0.4 — %s", nt->failed);
+      else
+        notify(true, "Failed to Load in\nPath: %s\nTID: %s", plugin_path.c_str(), title_id.c_str());
       reply(sender_app, true);
       break;
     }
-    notify(true, "Plugin or ELF launched successfully\nPath: %s\nTID: %s",
-           plugin_path.c_str(), title_id.c_str());
+    const auto* nt = ph_service_notify_lang();
+    if (plugin_path == "/data/PIZZA_HEN/payloads/ps5-backpork.elf")
+      notify(true, "BackPork 0.1 — %s", nt->started);
+    else if (plugin_path == "/data/PIZZA_HEN/payloads/garlic-savemgr.elf")
+      notify(true, "Garlic SaveMgr — %s\nIP: %s • TCP 8082", nt->started, ip_address);
+    else if (plugin_path == "/data/PIZZA_HEN/payloads/airpsx_v0.19.elf")
+      notify(true, "AirPSX 0.19 — %s\nIP: %s • TCP 1214", nt->started, ip_address);
+    else if (plugin_path == "/data/PIZZA_HEN/payloads/ps5upload_v5.4.8.elf")
+      notify(true, "PS5Upload 5.4.8 — %s\nIP: %s • TCP 9113/9114", nt->started, ip_address);
+    else if (plugin_path == "/data/PIZZA_HEN/payloads/ps5-fw-spoof_v26616621599.elf")
+      notify(true, "PS5 FW Spoof — %s", nt->started);
+    else if (plugin_path == "/data/PIZZA_HEN/payloads/np-fake-signin_v1.3.elf")
+      notify(true, "NP Fake Signin 1.3 — %s", nt->started);
+    else if (plugin_path == "/data/PIZZA_HEN/payloads/webkit-autoloader-installer_v0.4.0-pre-00e1028.elf")
+      notify(true, "WebKit Autoloader Installer — %s\nIP: %s • TCP 18181", nt->started, ip_address);
+    else if (plugin_path == "/data/PIZZA_HEN/payloads/ps5-app-dumper_v1.11.elf")
+      notify(true, "PS5 App Dumper 1.11 — %s", nt->started);
+    else if (plugin_path == "/data/PIZZA_HEN/payloads/rp-get-pin.elf")
+      /* R7.23.1: the upstream Remote Play payload owns the useful PS5
+       * notification surface (PIN + Account ID and pairing errors).  A PIZZA
+       * success notification here races with/overlays that information, so
+       * successful launch is log-only.  Failure/stop notifications remain. */
+      etaHEN_log("[PIZZA Remote Play] payload started; upstream notification owns PIN display");
+    else if (plugin_path == "/data/PIZZA_HEN/payloads/unrar-ps5_v1.4.0.elf" ||
+             plugin_path == "/data/PIZZA_HEN/payloads/PS_Game_State_Lib_v0.1.elf" ||
+             plugin_path == "/data/PIZZA_HEN/payloads/Ghostpad_v1.0.0.elf" ||
+             plugin_path == "/data/PIZZA_HEN/payloads/Ghostcontrol-PS5-USB-Controller-Patcher_v1.0.5.elf" ||
+             plugin_path == "/data/PIZZA_HEN/payloads/PS-DiscordPresence_v0.01.elf" ||
+             plugin_path == "/data/PIZZA_HEN/payloads/ps5-linux-loader.elf" ||
+             plugin_path == "/data/PIZZA_HEN/payloads/ps5-fan-control-v0.3.elf")
+      /* R7.25.2.7: these user-supplied service ELFs remain byte-exact.
+       * Do not cover an ELF's original notification/runtime surface with the
+       * generic PIZZA launch popup.  Toolbox state is still updated normally. */
+      etaHEN_log("[PIZZA Services] original ELF started; payload owns its original notification/runtime surface: %s", plugin_path.c_str());
+    else
+      notify(true, "Plugin or ELF launched successfully\nPath: %s\nTID: %s",
+             plugin_path.c_str(), title_id.c_str());
     reply(sender_app, false);
     break;
   }
@@ -542,13 +647,34 @@ void handleIPC(struct clientArgs *client, std::string &inputStr,
     break;
   }
   case BREW_UTIL_LAUNCH_ELFLDR: {
-#if 1
-    if (elfldr_spawn("/", STDOUT_FILENO, elfldr_start, "elfldr.elf") >= 0) {
-      reply(sender_app, false);
+    const char *elfldr_path = "/data/PIZZA_HEN/payloads/elfldr-ps5-v0.24-148b71c.elf";
+    mkdir("/data/PIZZA_HEN", 0777);
+    mkdir("/data/PIZZA_HEN/payloads", 0777);
+
+    int fd = open(elfldr_path, O_WRONLY | O_CREAT | O_TRUNC, 0777);
+    if (fd < 0) {
+      { const auto* nt = ph_service_notify_lang(); notify(true, "ELF Loader 0.24 — %s\n%s", nt->failed, nt->deploy_failed); }
+      reply(sender_app, true);
       break;
     }
-#endif
-    reply(sender_app, true);
+
+    size_t total = 0;
+    while (total < elfldr_size) {
+      const ssize_t wr = write(fd, elfldr_start + total, elfldr_size - total);
+      if (wr <= 0) break;
+      total += (size_t)wr;
+    }
+    close(fd);
+    chmod(elfldr_path, 0777);
+
+    if (total != elfldr_size || !load_plugin(elfldr_path)) {
+      { const auto* nt = ph_service_notify_lang(); notify(true, "ELF Loader 0.24 — %s\nTCP 9021", nt->failed); }
+      reply(sender_app, true);
+      break;
+    }
+
+    { const auto* nt = ph_service_notify_lang(); notify(true, "ELF Loader 0.24 — %s\nIP: %s • TCP 9021", nt->started, ip_address); }
+    reply(sender_app, false);
     break;
   }
   case BREW_UTIL_DOWNLOAD_CHEATS: {
@@ -766,7 +892,32 @@ void handleIPC(struct clientArgs *client, std::string &inputStr,
     json_t const *kind_prop = json_getProperty(my_json, "is_payload");
     const bool is_payload = kind_prop ? json_getInteger(kind_prop) != 0 : false;
     if (!p || !*p || !t || !*t) { reply(sender_app, true); break; }
-    reply(sender_app, !pizzahen_stop_plugin(p, t, is_payload));
+    const bool stopped = pizzahen_stop_plugin(p, t, is_payload);
+    if (stopped && strcmp(p, "/data/PIZZA_HEN/payloads/elfldr-ps5-v0.24-148b71c.elf") == 0)
+      { const auto* nt = ph_service_notify_lang(); notify(true, "ELF Loader 0.24 — %s", nt->stopped); }
+    else if (stopped && strcmp(p, "/data/PIZZA_HEN/payloads/ps5-backpork.elf") == 0)
+      { const auto* nt = ph_service_notify_lang(); notify(true, "BackPork 0.1 — %s", nt->stopped); }
+    else if (stopped && strcmp(p, "/data/PIZZA_HEN/payloads/garlic-savemgr.elf") == 0)
+      { const auto* nt = ph_service_notify_lang(); notify(true, "Garlic SaveMgr — %s", nt->stopped); }
+    else if (stopped && strcmp(p, "/data/PIZZA_HEN/payloads/airpsx_v0.19.elf") == 0)
+      { const auto* nt = ph_service_notify_lang(); notify(true, "AirPSX 0.19 — %s", nt->stopped); }
+    else if (stopped && strcmp(p, "/data/PIZZA_HEN/payloads/ps5upload_v5.4.8.elf") == 0)
+      { const auto* nt = ph_service_notify_lang(); notify(true, "PS5Upload 5.4.8 — %s", nt->stopped); }
+    else if (stopped && strcmp(p, "/data/PIZZA_HEN/payloads/ps5-fw-spoof_v26616621599.elf") == 0)
+      { const auto* nt = ph_service_notify_lang(); notify(true, "PS5 FW Spoof — %s", nt->stopped); }
+    else if (stopped && strcmp(p, "/data/PIZZA_HEN/payloads/np-fake-signin_v1.3.elf") == 0)
+      { const auto* nt = ph_service_notify_lang(); notify(true, "NP Fake Signin 1.3 — %s", nt->stopped); }
+    else if (stopped && strcmp(p, "/data/PIZZA_HEN/payloads/webkit-autoloader-installer_v0.4.0-pre-00e1028.elf") == 0)
+      { const auto* nt = ph_service_notify_lang(); notify(true, "WebKit Autoloader Installer — %s", nt->stopped); }
+    else if (stopped && strcmp(p, "/data/PIZZA_HEN/payloads/ps5-app-dumper_v1.11.elf") == 0)
+      { const auto* nt = ph_service_notify_lang(); notify(true, "PS5 App Dumper 1.11 — %s", nt->stopped); }
+    else if (stopped && strcmp(p, "/data/PIZZA_HEN/payloads/Chukei_DNS_v0.9.0.elf") == 0)
+      { const auto* nt = ph_service_notify_lang(); notify(true, "Chukei DNS 0.9.0 — %s", nt->stopped); }
+    else if (stopped && strcmp(p, "/data/PIZZA_HEN/payloads/nanoDNS_v0.4.elf") == 0)
+      { const auto* nt = ph_service_notify_lang(); notify(true, "nanoDNS 0.4 — %s", nt->stopped); }
+    else if (stopped && strcmp(p, "/data/PIZZA_HEN/payloads/rp-get-pin.elf") == 0)
+      { const auto* nt = ph_service_notify_lang(); notify(true, "Remote Play — %s", nt->stopped); }
+    reply(sender_app, !stopped);
     break;
   }
   case BREW_UTIL_SET_PLUGIN_AUTOSTART: {

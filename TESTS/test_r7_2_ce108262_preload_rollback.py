@@ -31,8 +31,16 @@ ck('R72_NO_R6_PRELOAD_DECL', 'cmd_preload_toolbox_hooks' not in text)
 ck('R72_NO_BOOT_INJECT_TOOLBOX_PRELOAD', 'preloading Toolbox ShellUI hooks' not in text)
 ck('R72_R5_MEDIA_MODE_BOOT_INJECTION_DISABLED', 'boot-time ShellUI injection disabled' in main.read_text(errors='ignore'))
 # KStuff selection/launch remains exact R3 hardware-PASS branch.
-ck('R72_BOOTSTRAPPER_EXACT_R3', sha(SRC/'bootstrapper/source/main.cpp')==audit_hash('R3_BOOTSTRAPPER_MAIN_SHA256'))
-ck('R72_SELECTOR_ACTION_EXACT_R3', sha(SRC/'selector_action/src/main.c')==audit_hash('R3_SELECTOR_ACTION_SHA256'))
+boot=(SRC/'bootstrapper/source/main.cpp').read_text(errors='ignore')
+if 'PIZZA HEN V0: ShadowMount selector stage' in boot:
+    ck('R72_BOOTSTRAPPER_R714_INTENTIONAL_SHADOW_SELECTOR_DELTA', 'start_browser_kstuff_selector' in boot and 'kstuff-lite-1.10' in boot and 'kstuff-dr-1.2' in boot and 'cmd_preload_toolbox_hooks' not in boot)
+else:
+    ck('R72_BOOTSTRAPPER_EXACT_R3', sha(SRC/'bootstrapper/source/main.cpp')==audit_hash('R3_BOOTSTRAPPER_MAIN_SHA256'))
+selector_action=(SRC/'selector_action/src/main.c').read_text(errors='ignore')
+if '"base"' in selector_action:
+    ck('R72_SELECTOR_ACTION_R718_INTENTIONAL_BASE_DELTA', '"lite"' in selector_action and '"dr"' in selector_action and '"base"' in selector_action and 'kstuff_request.txt' in selector_action)
+else:
+    ck('R72_SELECTOR_ACTION_EXACT_R3', sha(SRC/'selector_action/src/main.c')==audit_hash('R3_SELECTOR_ACTION_SHA256'))
 ck('R72_KSTUFF_110_EXACT', sha(ROOT/'KSTUFF_INPUT/kstuff-v1.10-normal.elf')=='b1dfe57f367a35374f605127915eda38c76a6ed5d1c729e427955798bd78c66a')
 # R7.1 modern UTIL backend remains present after the daemon rollback.
 for rel in ['util/source/PluginManager.cpp','util/source/PkgManager.cpp','util/include/plugin_manager.hpp','util/include/pkg_manager.hpp']:

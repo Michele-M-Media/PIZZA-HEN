@@ -67,7 +67,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE "${D_CWD}/include" "${D_CWD}/
 target_link_directories	(${PROJECT_NAME} PUBLIC "${PROJECT_ROOT}/lib")
 target_link_libraries	(${PROJECT_NAME} PUBLIC NineS SceSystemService SceUserService SceNetCtl kernel_sys elfldr sqlite SceNotification SceAppInstUtil)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-add_dependencies(${PROJECT_NAME} daemon util shellui selector_action toolbox_action toolbox_api)
+add_dependencies(${PROJECT_NAME} daemon util shellui selector_action shadow_selector_action toolbox_action toolbox_api)
 
 # Copy bootstrapper.elf as test.elf before processing
 add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD

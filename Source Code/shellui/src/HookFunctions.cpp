@@ -839,7 +839,7 @@ MonoString* Hook_getIpMacHost(uint64_t inst, SceNetIfName name) {
 
     //SCE_NET_IF_NAME_PHYSICAL
 
-    snprintf(full_text, sizeof(full_text), "PIZZA HEN v0.1\nIP: %s", ip_address);
+    snprintf(full_text, sizeof(full_text), "PIZZA HEN v2.00\nIP: %s", ip_address);
     if (global_conf.kit_panel_info == 0 || sceKernelGetSocSensorTemperature(0, &temp)) { // ON (ONLY)
         return mono_string_new(Root_Domain, full_text);
     }
@@ -2514,7 +2514,7 @@ MonoString * CxmlUri_Hook(MonoObject * Instance, MonoString * uri) {
   }
   return CxmlUri(Instance, uri);
 }
-/* PIZZA HEN v1.0 multilingual native UI bridge.
+/* PIZZA HEN v2.00 multilingual native UI bridge.
    Locale is written by the PS5 WebView launchers through toolbox_api locale-set.
    No firmware-specific language offset or private registry identifier is used. */
 enum PhI18nKey {
@@ -2684,12 +2684,13 @@ static void ph_localize_xml(std::string& xml, bool strip_details) {
     ph_replace_title(xml,"Backend: ITEM00001 compatibility layer","ITEM00001");
     ph_replace_title(xml,"Custom System Software information: PIZZA HEN runtime feature","PIZZA HEN — "+T(PH_RUNTIME_SYSTEM));
     ph_replace_title(xml,"ELF loader / plugin infrastructure: TCP 9021","ELF / Plugin — TCP 9021");
+    ph_replace_title(xml,"ELF Loader 0.24: standalone service available from PIZZA HEN Toolbox Services — TCP 9021","ELF Loader 0.24 — TCP 9021");
     ph_replace_title(xml,"Legacy FTP React/Self decryption support remains available with Legacy FTP","FTP React/Self");
     ph_replace_title(xml,"Media Contents shortcut: PIZZA HEN Toolbox (PZHN00001)","PIZZA HEN Toolbox (PZHN00001)");
     ph_replace_title(xml,"PIZZA HEN Debug: ps5debug-NG v1.3.0 — TCP 744 (automatic)","PIZZA HEN Debug — ps5debug-NG v1.3.0 — TCP 744");
     ph_replace_title(xml,"PIZZA HEN FTP: ftpsrv v0.21 — TCP 2121 (automatic)","PIZZA HEN FTP — TCP 2121");
     ph_replace_title(xml,"PIZZA HEN Game Manager integration by Michele Media","Michele Media"); ph_replace_title(xml,"PIZZA HEN logs/config are stored under /data/PIZZA_HEN","/data/PIZZA_HEN");
-    ph_replace_title(xml,"PIZZA HEN v0.1 - Italian Homebrew Environment","PIZZA HEN v1.0"); ph_replace_title(xml,"Project direction and branding: Michele Media","Michele Media");
+    ph_replace_title(xml,"PIZZA HEN v0.1 - Italian Homebrew Environment","PIZZA HEN v2.00"); ph_replace_title(xml,"Project direction and branding: Michele Media","Michele Media");
     ph_replace_title(xml,"Update Blocker: automatic during PIZZA HEN startup",T(PH_UPDATE)+" — PIZZA HEN");
     // Pizza recipe is branding, not a service: preserve full Italian recipe only for Italian, compact it elsewhere.
     ph_replace_title(xml,"★ Pizza Margherita Recipe ★","★ Pizza Margherita ★");

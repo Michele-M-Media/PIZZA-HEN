@@ -158,7 +158,23 @@ bool pizzahen_stop_plugin(const std::string &path, const std::string &title_id, 
   if(is_payload) pizzahen_payload_pid_path(path.c_str(),pbuf,sizeof(pbuf));
   else snprintf(pbuf,sizeof(pbuf),"/system_tmp/%s.PID",title_id.c_str());
   int pid=read_pid(pbuf); if(pid<=0){unlink(pbuf);return true;}
-  if(pid_alive(pid) && kill(pid,SIGKILL)!=0)return false;
+
+  /*
+   * Keep only the pre-existing Remote Play graceful-stop exception here.
+   * R7.25.2.11 deliberately removes DNS-specific lifecycle behavior: Chukei
+   * DNS and nanoDNS are handled as two ordinary, independent payload ELFs.
+   */
+  const bool graceful_payload = is_payload &&
+      path=="/data/PIZZA_HEN/payloads/rp-get-pin.elf";
+  if(graceful_payload) {
+    if(pid_alive(pid)) {
+      if(kill(pid,SIGTERM)!=0 && errno!=ESRCH)return false;
+      for(int i=0;i<50 && pid_alive(pid);i++) usleep(100000);
+      if(pid_alive(pid) && kill(pid,SIGKILL)!=0 && errno!=ESRCH)return false;
+    }
+  } else {
+    if(pid_alive(pid) && kill(pid,SIGKILL)!=0)return false;
+  }
   unlink(pbuf); return true;
 }
 

@@ -36,7 +36,7 @@
       <toggle_switch id="id_dpi_service" title="Direct Package Installer" second_title="Direct PKG Installer Server on Port 9090" value="0"/>
       <toggle_switch id="id_DPI_v2_service" title="Direct Package Installer V2" second_title="Direct PKG Installer V2 WebUI on http://PS5_IP:12800" value="0"/>
       <toggle_switch id="id_discord_rpc_service" title="Discord RPC" second_title="Optional Discord RPC server on Port 8000 (applies on next PIZZA HEN start)" value="0"/>
-      <label id="id_elfldr_status" title="ELF loader / plugin infrastructure: TCP 9021" style="center"/>
+      <label id="id_elfldr_status" title="ELF Loader 0.24: standalone service available from PIZZA HEN Toolbox Services — TCP 9021" style="center"/>
     </setting_list>
     <!-- Settings -->
         <setting_list id="id_utils" title="Settings" initial_focus_to="id_disp_titleids">

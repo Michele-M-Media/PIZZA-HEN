@@ -1,5 +1,0 @@
-R7.5 runtime diff from R7.4:
-Files /mnt/data/r74/PIZZA-HEN-V01-DUAL-MEDIA-R7.4-KSTUFF-TOGGLE-PHU-OVERLAY-PAYLOAD-REPO-V1/Source Code/bootstrapper/assets/toolbox_launcher.html and /mnt/data/PIZZA-HEN-V01-DUAL-MEDIA-R7.5-CHEATS-TOOLBOX-DIRECT-DEBUG-OVERLAY-OFF/Source Code/bootstrapper/assets/toolbox_launcher.html differ
-Files /mnt/data/r74/PIZZA-HEN-V01-DUAL-MEDIA-R7.4-KSTUFF-TOGGLE-PHU-OVERLAY-PAYLOAD-REPO-V1/Source Code/shellui/src/HookFunctions.cpp and /mnt/data/PIZZA-HEN-V01-DUAL-MEDIA-R7.5-CHEATS-TOOLBOX-DIRECT-DEBUG-OVERLAY-OFF/Source Code/shellui/src/HookFunctions.cpp differ
-Files /mnt/data/r74/PIZZA-HEN-V01-DUAL-MEDIA-R7.4-KSTUFF-TOGGLE-PHU-OVERLAY-PAYLOAD-REPO-V1/Source Code/shellui/src/prx.cpp and /mnt/data/PIZZA-HEN-V01-DUAL-MEDIA-R7.5-CHEATS-TOOLBOX-DIRECT-DEBUG-OVERLAY-OFF/Source Code/shellui/src/prx.cpp differ
-Files /mnt/data/r74/PIZZA-HEN-V01-DUAL-MEDIA-R7.4-KSTUFF-TOGGLE-PHU-OVERLAY-PAYLOAD-REPO-V1/Source Code/toolbox_api/src/main.c and /mnt/data/PIZZA-HEN-V01-DUAL-MEDIA-R7.5-CHEATS-TOOLBOX-DIRECT-DEBUG-OVERLAY-OFF/Source Code/toolbox_api/src/main.c differ
